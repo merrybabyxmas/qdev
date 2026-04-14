@@ -27,8 +27,28 @@ def _normalize_symbol(symbol: str) -> str:
     return symbol.replace("/", "_").replace(" ", "_")
 
 
+def _normalize_sort_keys(frame: pd.DataFrame) -> pd.DataFrame:
+    """
+    sort_values 전에 date/symbol 정렬 키 dtype을 안정적으로 맞춘다.
+    unordered categorical로 인한 pandas sort 오류를 방지하기 위한 정규화 단계.
+    """
+    frame = frame.copy()
+
+    if "date" in frame.columns:
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+
+    if "symbol" in frame.columns:
+        frame["symbol"] = frame["symbol"].astype("string")
+
+    return frame
+
+
 def _add_symbol_rollups(group: pd.DataFrame) -> pd.DataFrame:
-    group = group.sort_values("date").copy()
+    group = group.copy()
+    group["date"] = pd.to_datetime(group["date"], errors="coerce")
+    group = group.dropna(subset=["date"])
+    group = group.sort_values("date", kind="mergesort").copy()
+
     group["return_mean_20d"] = group["return_1d"].rolling(20, min_periods=5).mean()
     group["return_std_20d"] = group["return_1d"].rolling(20, min_periods=5).std()
     group["volume_mean_20d"] = group["volume"].rolling(20, min_periods=5).mean()
@@ -40,7 +60,10 @@ def _add_symbol_rollups(group: pd.DataFrame) -> pd.DataFrame:
 
 
 def _add_cross_section_features(frame: pd.DataFrame) -> pd.DataFrame:
-    frame = frame.sort_values(["date", "symbol"]).copy()
+    frame = _normalize_sort_keys(frame)
+    frame = frame.dropna(subset=["date"])
+    frame = frame.sort_values(["date", "symbol"], kind="mergesort").copy()
+
     by_date = frame.groupby("date", sort=True)
 
     frame["market_return_1d"] = by_date["return_1d"].transform("mean")
@@ -58,12 +81,22 @@ def _add_cross_section_features(frame: pd.DataFrame) -> pd.DataFrame:
     frame["momentum_proxy"] = 0.5 * frame["return_5d"] + 0.5 * frame["relative_return_5d"]
     frame["factor_proxy"] = 0.5 * frame["return_rank"] + 0.5 * (1.0 - frame["vol_rank"])
 
-    frame = frame.groupby("symbol", sort=False).apply(_add_symbol_rollups, include_groups=False).reset_index(level=0)
-    return frame.sort_values(["date", "symbol"]).reset_index(drop=True)
+    frame = (
+        frame.groupby("symbol", sort=False)
+        .apply(_add_symbol_rollups, include_groups=False)
+        .reset_index(level=0)
+    )
+
+    frame = _normalize_sort_keys(frame)
+    frame = frame.dropna(subset=["date"])
+    return frame.sort_values(["date", "symbol"], kind="mergesort").reset_index(drop=True)
 
 
 def _add_symbol_lags(frame: pd.DataFrame, lags: Iterable[int] = (1, 5)) -> pd.DataFrame:
-    frame = frame.sort_values(["symbol", "date"]).copy()
+    frame = _normalize_sort_keys(frame)
+    frame = frame.dropna(subset=["date"])
+    frame = frame.sort_values(["symbol", "date"], kind="mergesort").copy()
+
     base_cols = [
         "return_1d",
         "return_5d",
@@ -80,7 +113,10 @@ def _add_symbol_lags(frame: pd.DataFrame, lags: Iterable[int] = (1, 5)) -> pd.Da
     for lag in lags:
         for column in base_cols:
             frame[f"{column}_lag_{lag}"] = grouped[column].shift(lag)
-    return frame.sort_values(["date", "symbol"]).reset_index(drop=True)
+
+    frame = _normalize_sort_keys(frame)
+    frame = frame.dropna(subset=["date"])
+    return frame.sort_values(["date", "symbol"], kind="mergesort").reset_index(drop=True)
 
 
 @dataclass(frozen=True)
