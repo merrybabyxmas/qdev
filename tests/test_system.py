@@ -1,4 +1,7 @@
 import unittest
+import tempfile
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from src.features.builder import build_technical_features
@@ -60,6 +63,33 @@ class TestTradingSystem(unittest.TestCase):
         self.assertEqual(weights["AAPL"], 0.5)
         self.assertEqual(weights["GOOG"], 0.5)
         self.assertEqual(weights["MSFT"], 0.0)
+
+    def test_model_persistence(self):
+        feat_df = build_technical_features(self.df)
+        feat_df["target_return"] = feat_df["return_1d"].shift(-1)
+        feat_df = feat_df.dropna()
+
+        hmm = SimpleHMMRegimeDetector()
+        hmm.fit(feat_df)
+
+        lgbm = LightGBMRanker()
+        lgbm.fit(feat_df)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            hmm_path = tmpdir_path / "hmm.joblib"
+            lgbm_path = tmpdir_path / "lgbm.joblib"
+
+            hmm.save(hmm_path)
+            lgbm.save(lgbm_path)
+
+            loaded_hmm = SimpleHMMRegimeDetector.load(hmm_path)
+            loaded_lgbm = LightGBMRanker.load(lgbm_path)
+
+            self.assertTrue(loaded_hmm.is_fitted)
+            self.assertTrue(loaded_lgbm.is_fitted)
+            self.assertEqual(len(loaded_hmm.predict(feat_df)), len(feat_df))
+            self.assertEqual(len(loaded_lgbm.predict(feat_df)), len(feat_df))
 
 if __name__ == '__main__':
     unittest.main()

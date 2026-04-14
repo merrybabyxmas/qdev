@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "kind": "paper_session_transcript",
+  "captured_at": "2026-04-14T08:45:00Z",
+  "metadata": {
+    "source": "sample replay fixture",
+    "purpose": "CI/pytest/smoke regression for paper broker reconciliation",
+    "symbol": "BTC/USD"
+  },
+  "clock": {
+    "timestamp": "2026-04-14T08:45:00Z",
+    "is_open": true
+  },
+  "initial_state": {
+    "clock": {
+      "timestamp": "2026-04-14T08:45:00Z",
+      "is_open": true
+    },
+    "account": {
+      "equity": 100000.0,
+      "cash": 99500.0,
+      "buying_power": 200000.0,
+      "portfolio_value": 100000.0,
+      "paper": true,
+      "connected": true
+    },
+    "positions": {
+      "BTC/USD": 1.0005
+    },
+    "orders": [
+      {
+        "id": "session-open-001",
+        "order_id": "session-open-001",
+        "client_order_id": "paper-open-001",
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "qty": 0.001,
+        "type": "limit",
+        "time_in_force": "day",
+        "limit_price": 1.0,
+        "status": "open",
+        "filled_qty": 0.0,
+        "filled_avg_price": null
+      },
+      {
+        "id": "session-fill-001",
+        "order_id": "session-fill-001",
+        "client_order_id": "paper-fill-001",
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "qty": 0.0005,
+        "type": "market",
+        "time_in_force": "day",
+        "status": "filled",
+        "filled_qty": 0.0005,
+        "filled_avg_price": 50000.0
+      }
+    ],
+    "open_orders": [
+      {
+        "id": "session-open-001",
+        "order_id": "session-open-001",
+        "client_order_id": "paper-open-001",
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "qty": 0.001,
+        "type": "limit",
+        "time_in_force": "day",
+        "limit_price": 1.0,
+        "status": "open",
+        "filled_qty": 0.0,
+        "filled_avg_price": null
+      }
+    ],
+    "fills": [
+      {
+        "id": "session-fill-001",
+        "order_id": "session-fill-001",
+        "client_order_id": "paper-fill-001",
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "qty": 0.0005,
+        "type": "market",
+        "time_in_force": "day",
+        "status": "filled",
+        "filled_qty": 0.0005,
+        "filled_avg_price": 50000.0
+      }
+    ]
+  },
+  "scripted_responses": {
+    "submit_order": [
+      {
+        "match": {
+          "client_order_id": "paper-open-002",
+          "symbol": "BTC/USD",
+          "side": "buy",
+          "qty": 0.0001,
+          "limit_price": 1.0,
+          "type": "limit",
+          "time_in_force": "day"
+        },
+        "response": {
+          "id": "session-open-002",
+          "order_id": "session-open-002",
+          "client_order_id": "paper-open-002",
+          "symbol": "BTC/USD",
+          "side": "buy",
+          "qty": 0.0001,
+          "type": "limit",
+          "time_in_force": "day",
+          "limit_price": 1.0,
+          "status": "open",
+          "filled_qty": 0.0,
+          "filled_avg_price": null
+        }
+      },
+      {
+        "match": {
+          "client_order_id": "paper-fill-002",
+          "symbol": "BTC/USD",
+          "side": "buy",
+          "qty": 0.0001,
+          "type": "market",
+          "time_in_force": "day"
+        },
+        "response": {
+          "id": "session-fill-002",
+          "order_id": "session-fill-002",
+          "client_order_id": "paper-fill-002",
+          "symbol": "BTC/USD",
+          "side": "buy",
+          "qty": 0.0001,
+          "type": "market",
+          "time_in_force": "day",
+          "status": "filled",
+          "filled_qty": 0.0001,
+          "filled_avg_price": 50010.0
+        }
+      }
+    ]
+  },
+  "events": [
+    {
+      "action": "connect",
+      "timestamp": "2026-04-14T08:45:01Z",
+      "response": {
+        "connected": true
+      }
+    },
+    {
+      "action": "heartbeat",
+      "timestamp": "2026-04-14T08:45:01Z",
+      "response": {
+        "ok": true,
+        "source": "paper",
+        "connected": true,
+        "timestamp": "2026-04-14T08:45:01Z",
+        "clock": {
+          "timestamp": "2026-04-14T08:45:00Z",
+          "is_open": true
+        }
+      }
+    },
+    {
+      "action": "sync_state",
+      "timestamp": "2026-04-14T08:45:01Z",
+      "response": {
+        "account": {
+          "equity": 100000.0,
+          "cash": 99500.0,
+          "buying_power": 200000.0,
+          "portfolio_value": 100000.0,
+          "paper": true,
+          "connected": true
+        },
+        "positions": {
+          "BTC/USD": 1.0005
+        },
+        "open_orders": [
+          {
+            "id": "session-open-001",
+            "order_id": "session-open-001",
+            "client_order_id": "paper-open-001",
+            "symbol": "BTC/USD",
+            "side": "buy",
+            "qty": 0.001,
+            "type": "limit",
+            "time_in_force": "day",
+            "limit_price": 1.0,
+            "status": "open",
+            "filled_qty": 0.0,
+            "filled_avg_price": null
+          }
+        ],
+        "fills": [
+          {
+            "id": "session-fill-001",
+            "order_id": "session-fill-001",
+            "client_order_id": "paper-fill-001",
+            "symbol": "BTC/USD",
+            "side": "buy",
+            "qty": 0.0005,
+            "type": "market",
+            "time_in_force": "day",
+            "status": "filled",
+            "filled_qty": 0.0005,
+            "filled_avg_price": 50000.0
+          }
+        ],
+        "connected": true,
+        "paper": true,
+        "synced_at": "2026-04-14T08:45:01Z"
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class BrokerInterface(ABC):
     @abstractmethod
     def connect(self):
@@ -10,11 +11,21 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
+    def heartbeat(self):
+        """Return a lightweight connectivity snapshot."""
+        pass
+
+    @abstractmethod
     def get_account(self):
         pass
 
     @abstractmethod
     def get_positions(self):
+        pass
+
+    @abstractmethod
+    def sync_state(self):
+        """Reconcile account, positions, open orders, and fills from broker state."""
         pass
 
     @abstractmethod

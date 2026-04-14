@@ -1,3 +1,7 @@
+from _bootstrap import ensure_project_root
+
+ensure_project_root()
+
 import asyncio
 import logging
 from src.state.ring_buffers import TickRingBuffer, QuoteRingBuffer

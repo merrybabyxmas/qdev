@@ -20,6 +20,13 @@ class HFTMatchingEngine:
         지정가 주문 제출.
         통신 지연(latency) 반영: 현재 시간 + 지연 시간 이후부터 큐(대기열)에 합류한다고 가정.
         """
+        if side not in {"buy", "sell"}:
+            raise ValueError("side must be 'buy' or 'sell'")
+        if price <= 0:
+            raise ValueError("price must be positive")
+        if size <= 0:
+            raise ValueError("size must be positive")
+
         self.order_counter += 1
         order_id = f"O-{self.order_counter}"
 

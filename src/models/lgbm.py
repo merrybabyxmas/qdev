@@ -1,6 +1,9 @@
 import lightgbm as lgb
 import pandas as pd
 import numpy as np
+from pathlib import Path
+
+import joblib
 from src.utils.logger import logger
 
 class LightGBMRanker:
@@ -9,7 +12,12 @@ class LightGBMRanker:
     Predicts cross-sectional ranking scores.
     """
     def __init__(self):
-        self.model = lgb.LGBMRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+        self.model = lgb.LGBMRegressor(
+            n_estimators=50,
+            random_state=42,
+            n_jobs=1,
+            verbosity=-1,
+        )
         self.is_fitted = False
         self.features = ['SMA_20', 'EMA_20', 'return_1d', 'return_5d', 'volatility_20d']
 
@@ -33,9 +41,34 @@ class LightGBMRanker:
         logger.info("LightGBM Ranker fitted.")
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
+        if df.empty:
+            return np.array([], dtype=float)
+
         if not self.is_fitted:
             logger.warning("LightGBM not fitted. Returning zeros.")
-            return np.zeros(len(df))
+            return np.zeros(len(df), dtype=float)
+
+        missing = [f for f in self.features if f not in df.columns]
+        if missing:
+            logger.warning(f"Missing features for LGBM prediction: {missing}")
+            return np.zeros(len(df), dtype=float)
 
         X = df[self.features]
         return self.model.predict(X)
+
+    def save(self, path: str | Path) -> None:
+        payload = {
+            "model": self.model,
+            "is_fitted": self.is_fitted,
+            "features": self.features,
+        }
+        joblib.dump(payload, Path(path))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "LightGBMRanker":
+        payload = joblib.load(Path(path))
+        obj = cls()
+        obj.model = payload["model"]
+        obj.is_fitted = payload.get("is_fitted", False)
+        obj.features = payload.get("features", obj.features)
+        return obj

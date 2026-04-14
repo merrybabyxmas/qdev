@@ -1,3 +1,11 @@
 __pycache__/
 *.pyc
 .env
+.venv/
+*.egg-info/
+artifacts/quant_resource_bundle/
+artifacts/paper_soak/
+artifacts/control_plane/
+artifacts/data/
+
+docs/
