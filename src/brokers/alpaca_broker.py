@@ -16,12 +16,14 @@ class AlpacaBroker(BrokerInterface):
         self.paper = paper
         self.client = None
         self.connected = False
+        self.buying_power: float = 0.0  # refreshed on connect + get_account
 
     def connect(self):
         try:
             self.client = TradingClient(self.api_key, self.secret_key, paper=self.paper)
             acct = self.client.get_account()
             self.connected = True
+            self.buying_power = float(acct.buying_power)
             logger.info(f"Alpaca Broker connected successfully. Environment: {'Paper' if self.paper else 'Live'}. Buying Power: {acct.buying_power}")
         except Exception as e:
             self.connected = False
@@ -36,6 +38,7 @@ class AlpacaBroker(BrokerInterface):
         if not self.connected:
             raise ConnectionError("Broker not connected")
         acct = self.client.get_account()
+        self.buying_power = float(acct.buying_power)
         return {
             "balance": float(acct.cash),
             "equity": float(acct.equity),

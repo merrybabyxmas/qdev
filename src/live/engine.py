@@ -166,12 +166,17 @@ class LiveTradingEngine:
         self.tracker.evaluate_cancel_replace(t, symbol, b, a)
 
         mid_price = feature_event["mid_price"]
-        available_cash = self.cached_equity - sum(
-            self.cached_positions.get(s, 0.0) * mid_price for s in self.symbols
-        )
+        # Use broker's reported buying power if available (synced every 60s)
+        available_cash = getattr(self.broker, "buying_power", None)
+        if available_cash is None:
+            available_cash = self.cached_equity - sum(
+                self.cached_positions.get(s, 0.0) * mid_price for s in self.symbols
+            )
+        available_cash = max(float(available_cash), 0.0)
         delta_qty = self.risk_manager.calculate_order_qty(
             symbol, target_weight_for_sym, current_qty, mid_price, equity,
-            available_cash=max(available_cash, 0.0),
+            available_cash=available_cash,
+            max_order_usd=min(500.0, available_cash * 0.90),  # 최대 $500 또는 가용잔고 90%
         )
 
         # 6. Execute newly proposed actions
