@@ -93,3 +93,9 @@ class HFTMatchingEngine:
 
     def get_portfolio_value(self, current_mid: float) -> float:
         return self.cash + (self.inventory * current_mid)
+
+    def get_account(self) -> dict:
+        return {"equity": self.cash, "cash": self.cash, "buying_power": self.cash}
+
+    def get_positions(self) -> dict:
+        return {}  # single-instrument inventory tracked via self.inventory

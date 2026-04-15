@@ -21,7 +21,7 @@ def main():
 
     api_key = os.environ.get("BROKER_API_KEY", "mock")
     secret_key = os.environ.get("BROKER_SECRET_KEY", "mock")
-    enable_live = api_key != "mock"
+    enable_live = api_key != "mock" and not is_simulation
 
     logger.info(f"Initializing HFT Engine for {symbols} | simulation={is_simulation} | live_stream={enable_live}...")
 
