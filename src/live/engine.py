@@ -226,10 +226,12 @@ class LiveTradingEngine:
                         "n_features": 5,
                     },
                     "broker": {
-                        "cash": float(getattr(self.broker, "cash", 0.0)),
-                        "inventory": float(getattr(self.broker, "inventory", 0.0)),
+                        "cash": float(getattr(self.broker, "cash", self.cached_equity)),
+                        "equity": float(self.cached_equity),
+                        "inventory": float(sum(self.cached_positions.values())),
                         "pnl": float(getattr(self.broker, "pnl", 0.0)),
-                        "active_orders": int(len(getattr(self.broker, "active_orders", {}))),
+                        "active_orders": int(len(self.tracker.active_orders)),
+                        "mode": "paper" if (not self.is_simulation and getattr(self.broker, 'paper', True)) else ("live" if not self.is_simulation else "simulation"),
                     },
                 }
                 _HFT_STATUS_PATH.write_text(json.dumps(status_payload, indent=2), encoding="utf-8")

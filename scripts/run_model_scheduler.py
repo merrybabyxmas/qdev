@@ -15,6 +15,7 @@ ROOT = ensure_project_root()
 
 from src.controlplane.artifacts import CONTROL_PLANE_ROOT, latest_experiment_run  # noqa: E402
 from src.controlplane.snapshot import build_dashboard_snapshot  # noqa: E402
+from src.monitoring.control_plane import HFTControlPlane  # noqa: E402
 from src.utils.logger import logger  # noqa: E402
 
 
@@ -54,6 +55,29 @@ def _run_cycle(args: argparse.Namespace) -> tuple[dict[str, object], int]:
     started_at = datetime.now(timezone.utc).isoformat()
     completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
     snapshot = build_dashboard_snapshot()
+
+    # Generate HFT policy based on current regime
+    try:
+        cp = HFTControlPlane(str(CONTROL_PLANE_ROOT / "hft_policy.json"))
+        regime = (
+            json.loads((CONTROL_PLANE_ROOT / "regime_snapshot.json").read_text()).get("regime", "neutral")
+            if (CONTROL_PLANE_ROOT / "regime_snapshot.json").exists()
+            else "neutral"
+        )
+        allow_hft = regime not in ("crash", "extreme_vol")
+        cp.generate_policy(
+            regime=regime,
+            allow_hft=allow_hft,
+            symbol_configs={
+                "BTC/USD": {"enabled": True, "max_position_usd": 5000.0},
+                "ETH/USD": {"enabled": True, "max_position_usd": 3000.0},
+            },
+            global_thresholds={"min_prediction_bps": 0.2, "max_spread_bps": 50.0},
+        )
+        logger.info(f"HFT policy generated: regime={regime}, allow_hft={allow_hft}")
+    except Exception as _cp_err:
+        logger.warning(f"HFT policy generation skipped: {_cp_err}")
+
     latest_run = latest_experiment_run()
 
     payload = {
