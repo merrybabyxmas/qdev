@@ -1,0 +1,368 @@
+[
+  {
+    "pipeline_id": "B001",
+    "title": "Bayesian Linear Return Forecaster",
+    "family": "Bayesian",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/B001_bayesian_linear_return_forecaster.md",
+    "papers": [
+      "0710.3742_bayesian_online_changepoint_detection.pdf",
+      "1801.03222_multivariate_bsts.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "regime"
+    ]
+  },
+  {
+    "pipeline_id": "B003",
+    "title": "Bayesian Factor Regression",
+    "family": "Bayesian",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/B003_bayesian_factor_regression.md",
+    "papers": [
+      "2301.13594_black_litterman_fusion.pdf",
+      "2_10_Machine_Learning_Approach_to_Portfolio_Risk.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental"
+    ]
+  },
+  {
+    "pipeline_id": "B006",
+    "title": "Bayesian State Space Price-Vol Model",
+    "family": "Bayesian",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/B006_bayesian_state_space_price_vol_model.md",
+    "papers": [
+      "1805.04704_heston_piecewise_constant.pdf",
+      "2211.14814_heston_jumps.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "regime"
+    ]
+  },
+  {
+    "pipeline_id": "B007",
+    "title": "Bayesian State Space Regime Detector",
+    "family": "Bayesian",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/B007_bayesian_state_space_regime_detector.md",
+    "papers": [
+      "0710.3742_bayesian_online_changepoint_detection.pdf",
+      "1801.03222_multivariate_bsts.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "regime"
+    ]
+  },
+  {
+    "pipeline_id": "B011",
+    "title": "Bayesian Hierarchical Fundamental Model",
+    "family": "Bayesian",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/B011_bayesian_hierarchical_fundamental_model.md",
+    "papers": [
+      "2301.13594_black_litterman_fusion.pdf",
+      "1801.03222_multivariate_bsts.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental"
+    ]
+  },
+  {
+    "pipeline_id": "B018",
+    "title": "Bayesian Black-Litterman with ML Views",
+    "family": "Bayesian",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/B018_bayesian_black_litterman_with_ml_views.md",
+    "papers": [
+      "2301.13594_black_litterman_fusion.pdf",
+      "lightgbm_neurips_2017.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "S003",
+    "title": "Stochastic Volatility Timing Model",
+    "family": "SDE",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/S003_stochastic_volatility_timing_model.md",
+    "papers": [
+      "1805.04704_heston_piecewise_constant.pdf",
+      "2211.14814_heston_jumps.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "regime"
+    ]
+  },
+  {
+    "pipeline_id": "S004",
+    "title": "Jump Diffusion Crash Filter",
+    "family": "SDE",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/S004_jump_diffusion_crash_filter.md",
+    "papers": [
+      "2211.14814_heston_jumps.pdf",
+      "1707.03498_mean_reversion_deadlines.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "hft",
+      "market_data"
+    ]
+  },
+  {
+    "pipeline_id": "S011",
+    "title": "Mean-Reverting Volatility Allocation Model",
+    "family": "SDE",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/S011_mean_reverting_volatility_allocation_model.md",
+    "papers": [
+      "1602.05858_mean_reversion_optimal.pdf",
+      "1707.03498_mean_reversion_deadlines.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "regime"
+    ]
+  },
+  {
+    "pipeline_id": "S021",
+    "title": "Jump Filter + Momentum Engine",
+    "family": "SDE",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/S021_jump_filter_momentum_engine.md",
+    "papers": [
+      "0710.3742_bayesian_online_changepoint_detection.pdf",
+      "2211.14814_heston_jumps.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "hft",
+      "market_data"
+    ]
+  },
+  {
+    "pipeline_id": "F001",
+    "title": "Technical Indicator + LightGBM Ranker",
+    "family": "Financial + DL",
+    "status": "direct code path",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F001_technical_indicator_lightgbm_ranker.md",
+    "papers": [
+      "lightgbm_neurips_2017.pdf",
+      "0710.3742_bayesian_online_changepoint_detection.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F002",
+    "title": "Factor + LightGBM Cross-Sectional Model",
+    "family": "Financial + DL",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F002_factor_lightgbm_cross_sectional_model.md",
+    "papers": [
+      "lightgbm_neurips_2017.pdf",
+      "2301.13594_black_litterman_fusion.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F009",
+    "title": "News Sentiment + LightGBM Event Model",
+    "family": "Financial + DL",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F009_news_sentiment_lightgbm_event_model.md",
+    "papers": [
+      "5_01_FinBERT_Financial_Sentiment_Analysis.pdf",
+      "5_02_FinGPT_Open_Source_Financial_LLMs.pdf",
+      "5_11_Large_Language_Models_in_Finance_A_Survey.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "news",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F012",
+    "title": "Fundamental + Technical + LightGBM Hybrid",
+    "family": "Financial + DL",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F012_fundamental_technical_lightgbm_hybrid.md",
+    "papers": [
+      "lightgbm_neurips_2017.pdf",
+      "2301.13594_black_litterman_fusion.pdf",
+      "1801.03222_multivariate_bsts.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F015",
+    "title": "Residual Momentum + LightGBM",
+    "family": "Financial + DL",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F015_residual_momentum_lightgbm.md",
+    "papers": [
+      "lightgbm_neurips_2017.pdf",
+      "2_12_Online_Portfolio_Selection_A_Survey.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F019",
+    "title": "Correlation Graph + LightGBM Overlay",
+    "family": "Financial + DL",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F019_correlation_graph_lightgbm_overlay.md",
+    "papers": [
+      "5_08_Graph_Neural_Networks_for_Financial_Forecasting.pdf",
+      "2_09_Portfolio_Management_with_Graph_Neural_Networks.pdf",
+      "lightgbm_neurips_2017.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "graph",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F023",
+    "title": "Regime Detector + LightGBM Stack",
+    "family": "Financial + DL",
+    "status": "direct code path",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F023_regime_detector_lightgbm_stack.md",
+    "papers": [
+      "0710.3742_bayesian_online_changepoint_detection.pdf",
+      "lightgbm_neurips_2017.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "market_data",
+      "regime",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F025",
+    "title": "Fundamental Delay-Aware LightGBM Model",
+    "family": "Financial + DL",
+    "status": "supporting components implemented",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F025_fundamental_delay_aware_lightgbm_model.md",
+    "papers": [
+      "lightgbm_neurips_2017.pdf",
+      "1801.03222_multivariate_bsts.pdf",
+      "2301.13594_black_litterman_fusion.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F026",
+    "title": "Technical + Factor + XGBoost with CVaR Overlay",
+    "family": "Financial + DL",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F026_technical_factor_xgboost_with_cvar_overlay.md",
+    "papers": [
+      "lightgbm_neurips_2017.pdf",
+      "2_10_Machine_Learning_Approach_to_Portfolio_Risk.pdf",
+      "2301.13594_black_litterman_fusion.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "fundamental",
+      "ranker"
+    ]
+  },
+  {
+    "pipeline_id": "F027",
+    "title": "News Shock Filter + Momentum Engine",
+    "family": "Financial + DL",
+    "status": "research candidate",
+    "fit": "H",
+    "priority": "1차 핵심",
+    "path": "docs/pipeline_library/candidates/F027_news_shock_filter_momentum_engine.md",
+    "papers": [
+      "5_01_FinBERT_Financial_Sentiment_Analysis.pdf",
+      "5_02_FinGPT_Open_Source_Financial_LLMs.pdf",
+      "5_11_Large_Language_Models_in_Finance_A_Survey.pdf",
+      "0710.3742_bayesian_online_changepoint_detection.pdf"
+    ],
+    "code_groups": [
+      "ops",
+      "news",
+      "hft"
+    ]
+  }
+]

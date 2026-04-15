@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qdev"
+version = "0.1.0"
+description = "Quant research, backtest, and HFT-aware experimentation toolkit"
+requires-python = ">=3.12"
+dependencies = [
+  "alpaca-py",
+  "gymnasium",
+  "hmmlearn",
+  "lightgbm",
+  "numpy",
+  "pandas",
+  "plotly",
+  "pydantic",
+  "stable-baselines3",
+  "streamlit",
+  "structlog",
+  "torch",
+  "torchsde",
+  "vectorbt",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+  "artifacts",
+  "docs",
+  "reports",
+  "scripts",
+  ".venv",
+  ".git",
+]

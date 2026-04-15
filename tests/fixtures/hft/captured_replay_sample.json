@@ -1,0 +1,40 @@
+[
+  {
+    "type": "quote",
+    "timestamp_ms": 1713052800000.0,
+    "bid": 100.0,
+    "bid_size": 5.0,
+    "ask": 100.1,
+    "ask_size": 4.0
+  },
+  {
+    "type": "trade",
+    "timestamp_ms": 1713052800010.0,
+    "price": 100.05,
+    "size": 1.2,
+    "taker_side": "B"
+  },
+  {
+    "type": "quote",
+    "timestamp_ms": 1713052801010.0,
+    "bid": 100.02,
+    "bid_size": 4.8,
+    "ask": 100.12,
+    "ask_size": 3.9
+  },
+  {
+    "type": "trade",
+    "timestamp_ms": 1713052801020.0,
+    "price": 100.08,
+    "size": 0.9,
+    "taker_side": "S"
+  },
+  {
+    "type": "quote",
+    "timestamp_ms": 1713052802020.0,
+    "bid": 100.01,
+    "bid_size": 5.2,
+    "ask": 100.11,
+    "ask_size": 4.1
+  }
+]

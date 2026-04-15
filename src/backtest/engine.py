@@ -17,11 +17,19 @@ class BacktestEngine:
         Runs the backtest using price data and aligned weight targets.
         Grouping allows multi-asset portfolio computation rather than independent portfolios.
         """
+        if price_data.empty:
+            raise ValueError("price_data cannot be empty")
+        if weights.empty:
+            raise ValueError("weights cannot be empty")
+
         logger.info(f"Running backtest with fees={self.fees}, slippage={self.slippage}")
 
         common_idx = price_data.index.intersection(weights.index)
-        prices = price_data.loc[common_idx]
-        w = weights.loc[common_idx]
+        if common_idx.empty:
+            raise ValueError("No overlapping index between price_data and weights")
+
+        prices = price_data.reindex(common_idx).sort_index()
+        w = weights.reindex(common_idx).fillna(0.0).sort_index()
 
         portfolio = vbt.Portfolio.from_orders(
             close=prices,

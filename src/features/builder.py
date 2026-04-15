@@ -5,8 +5,10 @@ def build_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Builds technical indicators I2 (SMA, EMA, RSI, MACD) and Price bundle I1.
     """
-    if df.empty or 'close' not in df.columns:
-        logger.warning("DataFrame is empty or missing 'close' column.")
+    required_columns = {"open", "high", "low", "close", "volume"}
+    if df.empty or not required_columns.issubset(df.columns):
+        missing = sorted(required_columns - set(df.columns))
+        logger.warning(f"DataFrame is empty or missing required columns: {missing}")
         return df
 
     df = df.copy()
