@@ -28,7 +28,7 @@ class TestLiveComponents(unittest.TestCase):
 
     def test_champion_registry(self):
         reg = ChampionRegistry(self.test_reg_path)
-        champ = reg.get_champion()
+        champ = reg.get_champion("macro_daily")
 
         self.assertEqual(champ["model_id"], "M-BASE-LGBM-001")
 
@@ -36,9 +36,9 @@ class TestLiveComponents(unittest.TestCase):
             "model_id": "M-PRO-LGBM-002",
             "sharpe": 2.5
         }
-        reg.register_new_champion(new_champ)
+        reg.register_new_champion("macro_daily", new_champ)
 
-        updated_champ = reg.get_champion()
+        updated_champ = reg.get_champion("macro_daily")
         self.assertEqual(updated_champ["model_id"], "M-PRO-LGBM-002")
         self.assertEqual(updated_champ["sharpe"], 2.5)
 
