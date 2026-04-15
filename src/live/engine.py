@@ -1,4 +1,7 @@
 import asyncio
+import json
+import time
+from datetime import datetime, timezone
 import numpy as np
 from src.ingestion.websocket_client import MultiSymbolHFTStreamManager
 from src.models.state_detector import MarketStateDetector
@@ -7,17 +10,28 @@ from src.signals.router import PipelineRouter, ExecutionAction
 from src.execution.policy import ExecutionTracker
 from src.risk.manager import RiskManager
 from src.utils.logger import logger
+from src.controlplane.artifacts import CONTROL_PLANE_ROOT
+
+_HFT_STATUS_PATH = CONTROL_PLANE_ROOT / "hft_status.json"
+_HFT_TICKS_PATH = CONTROL_PLANE_ROOT / "logs" / "hft_ticks.jsonl"
+_HFT_TICKS_MAX_LINES = 5000
 
 class LiveTradingEngine:
     """
     모든 HFT 컴포넌트(스트림 수신 -> 마이크로스트럭처 계산 -> 온라인 학습 -> 랭킹 -> 상태 기반 파이프라인 라우팅 -> 취소/재주문 실행)를
     무한 루프(Event-driven Loop) 안에서 엮는 실제 트레이딩 엔진.
     """
-    def __init__(self, symbols, broker_engine, is_simulation=False):
+    def __init__(self, symbols, broker_engine, is_simulation=False, api_key: str = "mock", secret_key: str = "mock", enable_live_stream: bool = False):
         self.symbols = symbols
         self.broker = broker_engine
+        self.enable_live_stream = enable_live_stream
 
-        self.stream_manager = MultiSymbolHFTStreamManager(symbols=symbols)
+        self.stream_manager = MultiSymbolHFTStreamManager(
+            symbols=symbols,
+            api_key=api_key,
+            secret_key=secret_key,
+            enable_live_stream=enable_live_stream,
+        )
         self.stream_manager.on_feature_update = self._on_feature_event
 
         self.detector = MarketStateDetector(high_vol_threshold=0.5, toxic_vpin_threshold=0.8, trend_threshold=0.001)
@@ -29,6 +43,7 @@ class LiveTradingEngine:
 
         self.is_simulation = is_simulation
         self.tick_counter = 0
+        self._sym_tick_counter: dict[str, int] = {s: 0 for s in symbols}
 
     def _on_feature_event(self, symbol: str, feature_event: dict):
         """Websocket 스트림에서 틱마다 콜백됨."""
@@ -83,6 +98,70 @@ class LiveTradingEngine:
                 oid = self.broker.place_order({"symbol": symbol, "side": "buy", "price": a, "qty": 1.0})
             self.tracker.track_order(oid, symbol, "buy", a, 1.0 * action.size_multiplier)
 
+        # Status file write every 10 ticks per symbol
+        self._sym_tick_counter[symbol] = self._sym_tick_counter.get(symbol, 0) + 1
+        if self._sym_tick_counter[symbol] % 10 == 0:
+            try:
+                CONTROL_PLANE_ROOT.mkdir(parents=True, exist_ok=True)
+                (CONTROL_PLANE_ROOT / "logs").mkdir(parents=True, exist_ok=True)
+
+                # Build per-symbol entry
+                fe = feature_event
+                sym_entry = {
+                    "price": float((b + a) / 2.0),
+                    "bid": float(b),
+                    "ask": float(a),
+                    "spread": float(a - b),
+                    "obi": float(fe.get("obi", 0.0)),
+                    "microprice": float(fe.get("microprice", (b + a) / 2.0)),
+                    "toxicity_vpin": float(fe.get("toxicity_vpin", 0.0)),
+                    "volatility_burst": float(fe.get("volatility_burst", 0.0)),
+                    "intensity": float(fe.get("intensity", 0.0)),
+                    "market_state": current_state.name,
+                    "prediction_bps": float(pred_for_sym),
+                    "target_weight": float(target_weight_for_sym),
+                    "tick_count": int(self.ranker.tick_counts.get(symbol, 0)),
+                }
+
+                # Load existing status to merge symbol entries
+                existing_symbols: dict = {}
+                if _HFT_STATUS_PATH.exists():
+                    try:
+                        existing_symbols = json.loads(_HFT_STATUS_PATH.read_text(encoding="utf-8")).get("symbols", {})
+                    except Exception:
+                        existing_symbols = {}
+                existing_symbols[symbol] = sym_entry
+
+                total_ticks = sum(self.ranker.tick_counts.values())
+                status_payload = {
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "tick_counter": int(self.tick_counter),
+                    "symbols": existing_symbols,
+                    "model": {
+                        "total_updates": int(total_ticks),
+                        "n_features": 5,
+                    },
+                    "broker": {
+                        "cash": float(getattr(self.broker, "cash", 0.0)),
+                        "inventory": float(getattr(self.broker, "inventory", 0.0)),
+                        "pnl": float(getattr(self.broker, "pnl", 0.0)),
+                        "active_orders": int(len(getattr(self.broker, "active_orders", {}))),
+                    },
+                }
+                _HFT_STATUS_PATH.write_text(json.dumps(status_payload, indent=2), encoding="utf-8")
+
+                # Append tick record to JSONL, keep last 5000 lines
+                tick_record = {"timestamp": status_payload["updated_at"], "symbol": symbol, **sym_entry}
+                existing_lines: list[str] = []
+                if _HFT_TICKS_PATH.exists():
+                    existing_lines = _HFT_TICKS_PATH.read_text(encoding="utf-8").splitlines()
+                existing_lines.append(json.dumps(tick_record))
+                if len(existing_lines) > _HFT_TICKS_MAX_LINES:
+                    existing_lines = existing_lines[-_HFT_TICKS_MAX_LINES:]
+                _HFT_TICKS_PATH.write_text("\n".join(existing_lines) + "\n", encoding="utf-8")
+            except Exception as _e:
+                logger.debug(f"[HFT status write] skipped: {_e}")
+
         # Simulate Matching Process if running offline/simulation broker
         if self.is_simulation:
             self.broker.process_quote_update(t, b, a)
@@ -92,7 +171,39 @@ class LiveTradingEngine:
                 if oid not in self.broker.active_orders:
                     self.tracker.untrack_order(oid)
 
+    def _run_simulation(self):
+        """시뮬레이션 모드: 합성 랜덤워크 틱을 생성해 스트림 매니저로 주입."""
+        SEED_PRICES = {"BTC/USD": 83000.0, "ETH/USD": 1600.0}
+        mid = {s: SEED_PRICES.get(s, 1000.0) for s in self.symbols}
+        t_ms = time.time() * 1000
+        tick_interval = 0.05  # 20 ticks/sec per symbol
+
+        logger.info("Simulation tick loop started.")
+        while True:
+            for sym in self.symbols:
+                # Random walk step
+                shock = np.random.normal(0, mid[sym] * 0.0002)
+                mid[sym] = max(mid[sym] + shock, 1.0)
+                half_spread = mid[sym] * 0.0001
+                bid = mid[sym] - half_spread
+                ask = mid[sym] + half_spread
+                bid_size = round(np.random.exponential(0.5) + 0.1, 4)
+                ask_size = round(np.random.exponential(0.5) + 0.1, 4)
+                trade_size = round(np.random.exponential(0.1) + 0.01, 4)
+                taker_side = "B" if np.random.rand() > 0.5 else "S"
+
+                self.stream_manager.process_quote_snapshot(t_ms, bid, bid_size, ask, ask_size, symbol=sym)
+                self.stream_manager.process_trade_snapshot(t_ms, mid[sym], trade_size, taker_side, symbol=sym)
+
+            t_ms += tick_interval * 1000
+            time.sleep(tick_interval)
+
     def start(self):
         """실시간(Live) 트레이딩 루프 시작 (블로킹)"""
         logger.info("=== Starting Continuous Live Trading Engine ===")
-        self.stream_manager.run()
+        if self.enable_live_stream:
+            logger.info("Using real Alpaca WebSocket stream.")
+            self.stream_manager.run()
+        else:
+            logger.info("Live stream disabled — using synthetic tick simulation.")
+            self._run_simulation()

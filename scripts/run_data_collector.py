@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -25,6 +27,72 @@ STATUS_PATH = CONTROL_PLANE_ROOT / "data_collector_status.json"
 LOG_PATH = CONTROL_PLANE_ROOT / "logs" / "data_collector.jsonl"
 DEFAULT_RAW_ROOT = ROOT / "artifacts" / "data" / "raw"
 DEFAULT_FEATURE_ROOT = ROOT / "artifacts" / "data" / "feature_ready"
+GDRIVE_TOKEN_PATH = ROOT / "secrets" / "gdrive_token.json"
+PYTHON = ROOT / ".venv" / "bin" / "python"
+
+
+def _maybe_archive(args: argparse.Namespace) -> None:
+    """Run archival to Google Drive if token exists and thresholds are exceeded."""
+    if not GDRIVE_TOKEN_PATH.exists():
+        return  # Not authenticated yet — skip silently
+
+    raw_root = Path(args.raw_root)
+    max_rows = 0
+    for csv in raw_root.glob("*.csv"):
+        try:
+            rows = sum(1 for _ in csv.open()) - 1
+            max_rows = max(max_rows, rows)
+        except Exception:
+            pass
+
+    datasets_dir = ROOT / "artifacts" / "experiments" / "datasets"
+    max_panel_rows = 0
+    n_datasets = 0
+    if datasets_dir.exists():
+        for d in datasets_dir.iterdir():
+            panel = d / "panel.csv"
+            if panel.exists():
+                n_datasets += 1
+                try:
+                    rows = sum(1 for _ in panel.open()) - 1
+                    max_panel_rows = max(max_panel_rows, rows)
+                except Exception:
+                    pass
+
+    needs_archive = (
+        max_rows >= args.archive_raw_rows
+        or max_panel_rows >= args.archive_dataset_rows
+        or n_datasets > args.archive_max_datasets
+    )
+
+    if not needs_archive:
+        logger.info(
+            "Archive check: below thresholds",
+            max_raw_rows=max_rows,
+            max_panel_rows=max_panel_rows,
+            n_datasets=n_datasets,
+        )
+        return
+
+    logger.info(
+        "Archive threshold exceeded — starting GDrive archival",
+        max_raw_rows=max_rows,
+        max_panel_rows=max_panel_rows,
+        n_datasets=n_datasets,
+    )
+    python_exe = str(PYTHON if PYTHON.exists() else Path(sys.executable))
+    cmd = [
+        python_exe,
+        str(ROOT / "scripts" / "archive_to_gdrive.py"),
+        "--raw-rows", str(args.archive_raw_rows),
+        "--dataset-rows", str(args.archive_dataset_rows),
+        "--max-datasets", str(args.archive_max_datasets),
+    ]
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if result.returncode == 0:
+        logger.info("GDrive archival completed successfully")
+    else:
+        logger.warning("GDrive archival failed", stderr=result.stderr[-500:])
 
 
 def _append_jsonl(path: Path, payload: dict[str, object]) -> None:
@@ -105,6 +173,7 @@ def _run_cycle(args: argparse.Namespace) -> dict[str, object]:
     _append_jsonl(LOG_PATH, status)
     if args.refresh_snapshot:
         build_dashboard_snapshot()
+    _maybe_archive(args)
     logger.info("Data collector cycle complete", status=status)
     return status
 
@@ -118,6 +187,12 @@ def main() -> int:
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
     parser.add_argument("--feature-root", type=Path, default=DEFAULT_FEATURE_ROOT)
     parser.add_argument("--refresh-snapshot", action="store_true")
+    parser.add_argument("--archive-raw-rows", type=int, default=500,
+                        help="Row threshold per raw CSV before archiving to GDrive (default: 500)")
+    parser.add_argument("--archive-dataset-rows", type=int, default=2000,
+                        help="Row threshold for dataset panel.csv before archiving (default: 2000)")
+    parser.add_argument("--archive-max-datasets", type=int, default=3,
+                        help="Max local dataset snapshots to keep before archiving (default: 3)")
     args = parser.parse_args()
 
     iteration = 0
