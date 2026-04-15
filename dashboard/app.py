@@ -351,7 +351,25 @@ with left:
             _render_leaderboard_tab(_lb_intraday, "Intraday / Swing")
 
         with _lb_tabs[2]:
-            _render_leaderboard_tab(_lb_hft, "HFT Microstructure")
+            if _lb_hft.empty:
+                st.info("No HFT Microstructure models in leaderboard yet.")
+            else:
+                _hft_display = _lb_hft.copy()
+                _hft_cols_extra = [c for c in ["hft.hit_rate_pct", "hft.mae_bps", "hft.tick_count", "hft.avg_spread_bps"] if c in _hft_display.columns]
+                _bar_hft = px.bar(
+                    _hft_display,
+                    x="pipeline_id",
+                    y="final_score",
+                    color="pipeline_id",
+                    hover_data=["notes"] + _hft_cols_extra,
+                    title="HFT Microstructure — Final Score",
+                )
+                st.plotly_chart(_bar_hft, use_container_width=True)
+                _base_cols = ["pipeline_id", "decision", "final_score",
+                              "test_summary.total_return_pct", "test_summary.sharpe_ratio",
+                              "test_summary.max_drawdown_pct"]
+                _show_cols = [c for c in _base_cols + _hft_cols_extra if c in _hft_display.columns]
+                st.dataframe(_hft_display[_show_cols], use_container_width=True)
 
 with right:
     st.subheader("Runtime Status")

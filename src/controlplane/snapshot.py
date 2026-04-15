@@ -20,6 +20,7 @@ from src.controlplane.ranking import build_leaderboard
 from src.controlplane.regime import classify_current_regime
 from src.controlplane.router import build_router_registry
 from src.controlplane.service import collect_service_statuses
+from src.evaluation.hft_evaluator import build_hft_leaderboard_rows
 
 
 LEADERBOARD_JSON = CONTROL_PLANE_ROOT / "leaderboard.json"
@@ -89,6 +90,16 @@ def build_dashboard_snapshot() -> dict[str, Any]:
     manifest = load_experiment_manifest(run_dir)
     results = load_results_frame(run_dir)
     leaderboard = build_leaderboard(results)
+
+    # Append live HFT rows (OnlineSGD per symbol) — computed independently so
+    # their final_score is not distorted by cross-scaling with macro models.
+    try:
+        hft_rows = build_hft_leaderboard_rows()
+        if not hft_rows.empty:
+            leaderboard = pd.concat([leaderboard, hft_rows], ignore_index=True)
+    except Exception:
+        pass  # HFT rows are best-effort; never block snapshot generation
+
     if not leaderboard.empty:
         LEADERBOARD_JSON.write_text(json.dumps(_serialize_frame(leaderboard, limit=500), indent=2), encoding="utf-8")
         leaderboard.to_csv(LEADERBOARD_CSV, index=False)
