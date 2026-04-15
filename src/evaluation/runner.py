@@ -12,12 +12,24 @@ import pandas as pd
 from src.evaluation.dataset import DatasetBundle, DatasetSplit
 from src.evaluation.metrics import PerformanceSummary, classify_candidate, summarize_performance
 from src.evaluation.registry import ExperimentSpec, get_feature_columns
+from src.models.dl import DeepLearningModel
 from src.models.hmm import SimpleHMMRegimeDetector
 from src.models.lgbm import LightGBMRanker
 from src.models.linear import BayesianLinearReturnForecaster
 from src.models.linear import LinearReturnForecaster
 from src.risk.manager import RiskManager
 from src.utils.logger import logger
+
+_DL_MODEL_TYPES: dict[str, str] = {
+    "lstm": "LSTM",
+    "mlp": "MLP",
+    "transformer": "Transformer",
+    "tft": "TFT",
+    "patchtst": "PatchTST",
+    "gnn": "GNN",
+    "autoencoder": "Autoencoder",
+    "multimodal": "Multimodal",
+}
 
 
 def _normalize_positive(scores: pd.Series, mode: str) -> pd.Series:
@@ -89,6 +101,13 @@ def _score_base_model(
         regimes = pd.Series(model.predict(frame), index=frame.index, dtype=int)
         scores = (regimes == active_regime).astype(float)
         return scores, {"model": model, "regime_model": model, "active_regime": active_regime, "regimes": regimes}
+
+    if spec.base_model in _DL_MODEL_TYPES:
+        dl_type = _DL_MODEL_TYPES[spec.base_model]
+        model = DeepLearningModel(model_type=dl_type, features=list(feature_columns))
+        model.fit(train)
+        scores = model.predict(frame)
+        return pd.Series(scores, index=frame.index, dtype=float), {"model": model}
 
     raise ValueError(f"Unsupported base model: {spec.base_model}")
 
