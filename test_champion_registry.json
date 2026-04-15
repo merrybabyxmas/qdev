@@ -1,0 +1,16 @@
+{
+    "current_champion": {
+        "model_id": "M-PRO-LGBM-002",
+        "sharpe": 2.5
+    },
+    "history": [
+        {
+            "model_id": "M-BASE-LGBM-001",
+            "family": "LightGBM",
+            "sharpe": 1.2,
+            "max_drawdown": 0.15,
+            "last_updated": "2024-01-01T00:00:00Z",
+            "path": "data/models/m_base_lgbm_001.pkl"
+        }
+    ]
+}
