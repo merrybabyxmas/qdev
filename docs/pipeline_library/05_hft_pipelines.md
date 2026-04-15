@@ -29,6 +29,27 @@
 - 장점: 급등락장(Flash crash 등)에서 Market Making 손실 방어
 - 난이도: L3
 
+## HFT Microstructure Pipeline Library (Detailed Specs)
+
+E001–E003은 초기 카탈로그 항목이며, 아래의 공식 파이프라인 라이브러리로 발전했다.
+
+| Pipeline ID | Family | Status | Description |
+| --- | --- | --- | --- |
+| [HFT_BASE_001](./hft_microstructure/HFT_BASE_001.md) | HFT Microstructure | active_baseline | OBI + Microprice OnlineSGD (next-5-tick bps) |
+| [HFT_BASE_002](./hft_microstructure/HFT_BASE_002.md) | HFT Microstructure | research | OBI + Logistic Direction Classifier |
+| [HFT_BASE_003](./hft_microstructure/HFT_BASE_003.md) | HFT Microstructure | research | Microprice Drift Threshold Trader (no ML) |
+| [HFT_RISK_001](./hft_microstructure/HFT_RISK_001.md) | HFT Risk Overlay | mandatory | Toxicity / Wide-Spread Halt Filter |
+| [HFT_SDE_001](./hft_microstructure/HFT_SDE_001.md) | HFT SDE | research | Inventory-Aware Quote Skew Controller |
+| [HFT_SDE_002](./hft_microstructure/HFT_SDE_002.md) | HFT SDE | research | Jump / Burst Risk Overlay |
+| [HFT_DL_001](./hft_microstructure/HFT_DL_001.md) | HFT Deep Learning | research | Compact DeepLOB Classifier |
+| [HFT_DL_002](./hft_microstructure/HFT_DL_002.md) | HFT Deep Learning | research | Event Sequence LSTM |
+| [HFT_EXEC_001](./hft_microstructure/HFT_EXEC_001.md) | HFT Execution | research | Fill Probability Gate |
+| [HFT_EXEC_002](./hft_microstructure/HFT_EXEC_002.md) | HFT Execution | research | Cancel/Replace Threshold Controller |
+| [HFT_HYB_001](./hft_microstructure/HFT_HYB_001.md) | HFT Hybrid | mandatory_bridge | Macro Regime → HFT Enable/Disable Gate |
+| [HFT_HYB_002](./hft_microstructure/HFT_HYB_002.md) | HFT Hybrid | research | Regime-Aware HFT Threshold Router |
+
+Routing 규칙은 [ROUTING_TABLE.md](./hft_microstructure/ROUTING_TABLE.md) 참고.
+
 ## Reference Anchors
 
 - [DeepLOB: Deep Convolutional Neural Networks for Limit Order Books](../references/papers/1808.03668_deeplob.pdf)
