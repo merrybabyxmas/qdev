@@ -122,6 +122,7 @@ class MultiSymbolHFTStreamManager:
         taker_side = getattr(data, "taker_side", None) or getattr(data, "side", None)
         side = 1 if str(taker_side).upper().startswith("B") else -1
         sym = data.symbol
+
         if sym in self.trade_buffers:
             self.trade_buffers[sym].append(t, p, s, side)
             logger.debug(f"Trade: {sym} @ {p} ({s})")
@@ -136,6 +137,7 @@ class MultiSymbolHFTStreamManager:
         ap = float(data.ask_price)
         as_ = float(data.ask_size)
         sym = data.symbol
+
         if sym in self.quote_buffers:
             self.quote_buffers[sym].append(t, bp, bs, ap, as_)
             logger.debug(f"Quote: {sym} B {bs}@{bp} - A {as_}@{ap}")

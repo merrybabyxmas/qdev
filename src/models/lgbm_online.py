@@ -46,6 +46,7 @@ class OnlineLightGBMRanker:
             self.is_fitted = True
         else:
             logger.debug("Incrementally updating LightGBM Model with new batch...")
+            # Keep_training_booster=True allows continuing training from the existing trees
             self.booster = lgb.train(
                 params,
                 train_data,

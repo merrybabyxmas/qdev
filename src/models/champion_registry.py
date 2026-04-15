@@ -28,7 +28,8 @@ class ChampionRegistry:
             },
             "hft_microstructure": {
                 "model_id": "M-HFT-SGD-001",
-                "sharpe": 2.0
+                "sharpe": 2.0,
+                "notes": "OBI + OnlineSGD"
             },
             "history": []
         }
