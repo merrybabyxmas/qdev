@@ -15,6 +15,7 @@ class RuntimeMode(str, Enum):
     paper = "paper"
     live = "live"
 
+
 class BrokerConfig(BaseModel):
     api_key: str = Field(default="mock_api_key", description="Broker API Key")
     secret_key: str = Field(default="mock_secret_key", description="Broker Secret Key")
@@ -25,7 +26,7 @@ class SystemConfig(BaseModel):
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
 
     @staticmethod
-    def _parse_bool(value: str | None, default: bool = False) -> bool:
+    def _parse_bool(value: str = None, default: bool = False) -> bool:
         if value is None:
             return default
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
@@ -55,5 +56,6 @@ class SystemConfig(BaseModel):
     @property
     def is_live(self) -> bool:
         return self.mode == RuntimeMode.live
+
 
 config = SystemConfig.load()

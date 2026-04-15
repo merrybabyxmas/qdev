@@ -1,7 +1,3 @@
-from _bootstrap import ensure_project_root
-
-ensure_project_root()
-
 import asyncio
 import logging
 from src.state.ring_buffers import TickRingBuffer, QuoteRingBuffer
@@ -60,19 +56,19 @@ def run_test():
 
     # 2. 강한 매수세 발생 (Ask 물량 소진 중)
     t += 50.0
-    sim.feed_quote(t, 100.0, 10.0, 100.1, 1.0) # OBI = (10-1)/(10+1) = 0.81 -> Buy limit at 100.0 placed
+    sim.feed_quote(t, 100.0, 10.0, 100.1, 1.0)  # OBI = (10-1)/(10+1) = 0.81 -> Buy limit at 100.0 placed
 
     # 3. 시장 호가 하락 -> 내 매수 오더가 체결될 수 있음
     t += 50.0
-    sim.feed_quote(t, 99.9, 5.0, 100.0, 2.0) # Ask가 100.0으로 내려옴 -> 내가 100.0에 건 매수 오더 체결
+    sim.feed_quote(t, 99.9, 5.0, 100.0, 2.0)  # Ask가 100.0으로 내려옴 -> 내가 100.0에 건 매수 오더 체결
 
     # 4. 강한 매도세 발생 (Bid 물량 소진 중)
     t += 50.0
-    sim.feed_quote(t, 99.9, 1.0, 100.0, 10.0) # OBI = (1-10)/(1+10) = -0.81 -> Sell limit at 100.0 placed
+    sim.feed_quote(t, 99.9, 1.0, 100.0, 10.0)  # OBI = (1-10)/(1+10) = -0.81 -> Sell limit at 100.0 placed
 
     # 5. 시장 호가 상승 -> 내 매도 오더가 체결될 수 있음
     t += 50.0
-    sim.feed_quote(t, 100.0, 5.0, 100.1, 5.0) # Bid가 100.0으로 올라옴 -> 내가 100.0에 건 매도 오더 체결
+    sim.feed_quote(t, 100.0, 5.0, 100.1, 5.0)  # Bid가 100.0으로 올라옴 -> 내가 100.0에 건 매도 오더 체결
 
     sim.print_performance()
 

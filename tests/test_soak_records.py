@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from src.brokers.mock import MockBroker
-from src.ingestion.websocket_client import HFTStreamManager
+from src.ingestion.websocket_client import MultiSymbolHFTStreamManager as HFTStreamManager
 from src.monitoring import HealthMonitor, SoakRecordStore, SoakRunner
 from src.risk.manager import RiskManager
 

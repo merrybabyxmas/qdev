@@ -56,7 +56,7 @@ class LightGBMRanker:
         X = df[self.features]
         return self.model.predict(X)
 
-    def save(self, path: str | Path) -> None:
+    def save(self, path) -> None:
         payload = {
             "model": self.model,
             "is_fitted": self.is_fitted,
@@ -65,7 +65,7 @@ class LightGBMRanker:
         joblib.dump(payload, Path(path))
 
     @classmethod
-    def load(cls, path: str | Path) -> "LightGBMRanker":
+    def load(cls, path) -> "LightGBMRanker":
         payload = joblib.load(Path(path))
         obj = cls()
         obj.model = payload["model"]

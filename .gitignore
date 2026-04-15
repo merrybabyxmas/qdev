@@ -7,5 +7,6 @@ artifacts/quant_resource_bundle/
 artifacts/paper_soak/
 artifacts/control_plane/
 artifacts/data/
+secrets/
 
 docs/

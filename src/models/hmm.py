@@ -51,7 +51,7 @@ class SimpleHMMRegimeDetector:
         regimes = self.model.predict(features)
         return regimes
 
-    def save(self, path: str | Path) -> None:
+    def save(self, path) -> None:
         payload = {
             "n_components": self.n_components,
             "n_iter": self.model.n_iter,
@@ -62,7 +62,7 @@ class SimpleHMMRegimeDetector:
         joblib.dump(payload, Path(path))
 
     @classmethod
-    def load(cls, path: str | Path) -> "SimpleHMMRegimeDetector":
+    def load(cls, path) -> "SimpleHMMRegimeDetector":
         payload = joblib.load(Path(path))
         obj = cls(n_components=payload.get("n_components", 2), n_iter=payload.get("n_iter", 25))
         obj.model = payload["model"]

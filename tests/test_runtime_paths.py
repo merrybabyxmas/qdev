@@ -5,7 +5,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from src.ingestion import loader
-from src.ingestion.websocket_client import HFTStreamManager
+from src.ingestion.websocket_client import MultiSymbolHFTStreamManager as HFTStreamManager
 from src.brokers.mock import MockBroker
 from src.utils.config import SystemConfig
 
@@ -29,31 +29,33 @@ class TestRuntimePaths(unittest.TestCase):
         self.assertTrue({"open", "high", "low", "close", "volume"}.issubset(df.columns))
 
     def test_hft_stream_manager_replay_emits_features(self):
-        manager = HFTStreamManager(enable_live_stream=False)
+        manager = HFTStreamManager(symbols=["BTC/USD"], enable_live_stream=False)
         seen = []
-        manager.on_feature_update = seen.append
+        manager.on_feature_update = lambda sym, evt: seen.append(evt)
 
         manager.replay_events(
             [
-                {"type": "quote", "timestamp_ms": 1000.0, "bid": 100.0, "bid_size": 5.0, "ask": 100.1, "ask_size": 4.0},
-                {"type": "trade", "timestamp_ms": 1010.0, "price": 100.05, "size": 1.0, "taker_side": "B"},
+                {"type": "quote", "symbol": "BTC/USD", "timestamp_ms": 1000.0, "bid": 100.0, "bid_size": 5.0, "ask": 100.1, "ask_size": 4.0},
+                {"type": "trade", "symbol": "BTC/USD", "timestamp_ms": 1010.0, "price": 100.05, "size": 1.0, "taker_side": "B"},
             ]
         )
 
         self.assertGreaterEqual(len(seen), 2)
-        self.assertIsNotNone(manager.last_feature_event)
-        self.assertAlmostEqual(manager.last_feature_event["spread"], 0.1)
+        self.assertIsNotNone(manager.last_feature_event.get("BTC/USD"))
+        self.assertAlmostEqual(manager.last_feature_event["BTC/USD"]["spread"], 0.1, places=1)
 
     def test_live_hft_handlers_mark_event_receipts(self):
-        manager = HFTStreamManager(enable_live_stream=False)
+        manager = HFTStreamManager(symbols=["BTC/USD"], enable_live_stream=False)
 
         trade = SimpleNamespace(
+            symbol="BTC/USD",
             timestamp=SimpleNamespace(timestamp=lambda: 1.0),
             price=100.0,
             size=1.0,
             side="B",
         )
         quote = SimpleNamespace(
+            symbol="BTC/USD",
             timestamp=SimpleNamespace(timestamp=lambda: 2.0),
             bid_price=99.9,
             bid_size=5.0,
@@ -68,7 +70,7 @@ class TestRuntimePaths(unittest.TestCase):
         self.assertIsNotNone(first_seen)
         self.assertIsNotNone(manager.last_event_received_at)
         self.assertGreaterEqual(manager.last_event_received_at, first_seen)
-        self.assertIsNotNone(manager.last_feature_event)
+        self.assertIsNotNone(manager.last_feature_event.get("BTC/USD"))
 
     def test_mock_broker_records_fills(self):
         broker = MockBroker()

@@ -1,6 +1,6 @@
 import time
 import asyncio
-from typing import Callable, Any
+from typing import Callable, Any, List
 
 try:  # pragma: no cover - optional dependency guard
     from alpaca.data.live.crypto import CryptoDataStream
@@ -27,7 +27,7 @@ class MultiSymbolHFTStreamManager:
         api_key: str = "mock",
         secret_key: str = "mock",
         symbol: str = None,
-        symbols: list[str] = None,
+        symbols: List[str] = None,
         enable_live_stream: bool = False,
     ):
         # Support both symbol= (singular, legacy) and symbols= (multi)
@@ -46,8 +46,8 @@ class MultiSymbolHFTStreamManager:
             self.stream = CryptoDataStream(api_key, secret_key)
 
         # Per-symbol ring buffers
-        self.trade_buffers: dict[str, TickRingBuffer] = {s: TickRingBuffer(capacity=10000) for s in self.symbols}
-        self.quote_buffers: dict[str, QuoteRingBuffer] = {s: QuoteRingBuffer(capacity=1000) for s in self.symbols}
+        self.trade_buffers: dict = {s: TickRingBuffer(capacity=10000) for s in self.symbols}
+        self.quote_buffers: dict = {s: QuoteRingBuffer(capacity=1000) for s in self.symbols}
 
         # Backward-compat aliases for single-symbol usage
         self.trade_buffer = self.trade_buffers[self.symbol]
@@ -55,10 +55,10 @@ class MultiSymbolHFTStreamManager:
 
         # Callbacks — on_feature_update(symbol: str, feature_event: dict)
         self.on_feature_update: Callable[[str, dict], None] = None
-        self.last_feature_event: dict[str, Any] | None = None
-        self.last_event_received_at: float | None = None
-        self.last_trade_at: float | None = None
-        self.last_quote_at: float | None = None
+        self.last_feature_event: dict = {sym: None for sym in self.symbols}
+        self.last_event_received_at: float = None
+        self.last_trade_at: float = None
+        self.last_quote_at: float = None
 
     def _mark_event_received(self, kind: str) -> None:
         now = time.monotonic()
@@ -73,21 +73,26 @@ class MultiSymbolHFTStreamManager:
         sym = symbol or self.symbol
         self._mark_event_received("trade")
         side = 1 if str(taker_side).upper().startswith("B") else -1
-        self.trade_buffers[sym].append(timestamp_ms, price, size, side)
-        self._trigger_features(sym)
+        if sym in self.trade_buffers:
+            self.trade_buffers[sym].append(timestamp_ms, price, size, side)
+            self._trigger_features(sym)
 
     def process_quote_snapshot(self, timestamp_ms: float, bid_price: float, bid_size: float, ask_price: float, ask_size: float, symbol: str = None):
         """Process an offline quote event for replay or tests."""
         sym = symbol or self.symbol
         self._mark_event_received("quote")
-        self.quote_buffers[sym].append(timestamp_ms, bid_price, bid_size, ask_price, ask_size)
-        self._trigger_features(sym)
+        if sym in self.quote_buffers:
+            self.quote_buffers[sym].append(timestamp_ms, bid_price, bid_size, ask_price, ask_size)
+            self._trigger_features(sym)
 
-    def replay_events(self, events: list[dict[str, Any]]):
+    def replay_events(self, events: list):
         """Replay a finite event stream without requiring a live websocket connection."""
         for event in events:
             event_type = event.get("type")
             sym = event.get("symbol", self.symbol)
+            if not sym or sym not in self.symbols:
+                continue
+
             if event_type == "quote":
                 self.process_quote_snapshot(
                     float(event["timestamp_ms"]),
@@ -167,7 +172,7 @@ class MultiSymbolHFTStreamManager:
             "volatility_burst": vol_burst,
             "mid_price": (bp + ap) / 2.0
         }
-        self.last_feature_event = feature_event
+        self.last_feature_event[symbol] = feature_event
         if self.on_feature_update:
             self.on_feature_update(symbol, feature_event)
 

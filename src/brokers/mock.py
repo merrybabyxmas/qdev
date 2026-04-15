@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from typing import Dict, Any, List
-
 from src.brokers.base import BrokerInterface
 from src.utils.logger import logger
 
@@ -11,7 +10,7 @@ class MockBroker(BrokerInterface):
         self.orders = {}
         self.fills = []
         self.account_balance = 100000.0
-        self.last_heartbeat_at: str | None = None
+        self.last_heartbeat_at: str = None
 
     def connect(self):
         self.connected = True

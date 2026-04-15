@@ -2,3 +2,4 @@
 pytest
 plotly
 streamlit
+hmmlearn

@@ -38,7 +38,7 @@ class BacktestEngine:
             fees=self.fees,
             slippage=self.slippage,
             freq='D',
-            group_by=True # Groups multiple columns into a single portfolio
+            group_by=True  # Groups multiple columns into a single portfolio
         )
 
         # Calculate single portfolio return

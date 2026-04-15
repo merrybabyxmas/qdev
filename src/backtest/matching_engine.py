@@ -38,7 +38,7 @@ class HFTMatchingEngine:
             "price": price,
             "size": size,
             "arrival_time": arrival_time,
-            "queue_ahead": 0.0, # Approximate volume ahead of us
+            "queue_ahead": 0.0,  # Approximate volume ahead of us
             "filled": 0.0
         }
 

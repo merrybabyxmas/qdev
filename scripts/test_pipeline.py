@@ -1,7 +1,3 @@
-from _bootstrap import ensure_project_root
-
-ensure_project_root()
-
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
