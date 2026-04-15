@@ -166,7 +166,13 @@ class LiveTradingEngine:
         self.tracker.evaluate_cancel_replace(t, symbol, b, a)
 
         mid_price = feature_event["mid_price"]
-        delta_qty = self.risk_manager.calculate_order_qty(symbol, target_weight_for_sym, current_qty, mid_price, equity)
+        available_cash = self.cached_equity - sum(
+            self.cached_positions.get(s, 0.0) * mid_price for s in self.symbols
+        )
+        delta_qty = self.risk_manager.calculate_order_qty(
+            symbol, target_weight_for_sym, current_qty, mid_price, equity,
+            available_cash=max(available_cash, 0.0),
+        )
 
         # 6. Execute newly proposed actions
         active_orders_for_sym = {k: v for k, v in self.tracker.active_orders.items() if v["symbol"] == symbol}

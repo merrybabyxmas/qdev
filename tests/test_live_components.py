@@ -50,18 +50,24 @@ class TestLiveComponents(unittest.TestCase):
         current_qty = 0.0
         btc_price = 50000.0
 
-        delta = manager.calculate_order_qty("BTC", target_weight, current_qty, btc_price, equity)
+        # max_order_usd 비활성화(큰 값)로 기존 비중 기반 계산 검증
+        delta = manager.calculate_order_qty("BTC", target_weight, current_qty, btc_price, equity, max_order_usd=1_000_000)
         self.assertAlmostEqual(delta, 0.4, places=4)
 
         current_qty = 0.5
-        delta2 = manager.calculate_order_qty("BTC", target_weight, current_qty, btc_price, equity)
+        delta2 = manager.calculate_order_qty("BTC", target_weight, current_qty, btc_price, equity, max_order_usd=1_000_000)
         self.assertAlmostEqual(delta2, -0.1, places=4)
 
         manager.evaluate_account_risk(100000.0)
         manager.evaluate_account_risk(80000.0)
 
-        delta3 = manager.calculate_order_qty("BTC", target_weight, current_qty, btc_price, 80000.0)
+        delta3 = manager.calculate_order_qty("BTC", target_weight, current_qty, btc_price, 80000.0, max_order_usd=1_000_000)
         self.assertAlmostEqual(delta3, -0.5, places=4)
+
+        # max_order_usd 캡 동작 검증: $2,000 한도 → 0.04 BTC (별도 manager)
+        manager2 = RiskManager(max_position_cap=0.50, max_drawdown=0.10)
+        delta_capped = manager2.calculate_order_qty("BTC", target_weight, 0.0, btc_price, equity, max_order_usd=2000)
+        self.assertAlmostEqual(delta_capped, 0.04, places=4)
 
 if __name__ == '__main__':
     unittest.main()

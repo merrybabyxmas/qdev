@@ -91,10 +91,20 @@ class RiskManager:
 
         return True, reasons
 
-    def calculate_order_qty(self, symbol: str, target_weight: float, current_qty: float, current_price: float, account_equity: float) -> float:
+    def calculate_order_qty(
+        self,
+        symbol: str,
+        target_weight: float,
+        current_qty: float,
+        current_price: float,
+        account_equity: float,
+        available_cash: float | None = None,
+        max_order_usd: float = 2000.0,
+    ) -> float:
         """
-        목표 비중(Weight)을 기반으로, 현재 내 실제 보유 잔고(Qty)를 빼고,
-        Alpaca 브로커에 전송할 '신규 주문 필요 수량(Delta Qty)'을 계산.
+        목표 비중(Weight)을 기반으로 신규 주문 수량(Delta Qty) 계산.
+        - available_cash가 주어지면 실제 가용 잔고 초과 주문 방지
+        - max_order_usd로 단일 주문 최대 USD 한도 적용 (기본 $2,000)
         """
         if current_price <= 0:
             return 0.0
@@ -102,14 +112,19 @@ class RiskManager:
         if self.kill_switch_active:
             target_weight = 0.0
 
-        target_value_usd = account_equity * target_weight
+        # 목표 포지션 USD 가치 — account_equity 기준 비중
+        target_value_usd = account_equity * min(abs(target_weight), self.max_position_cap)
+        if target_weight < 0:
+            target_value_usd = -target_value_usd
+
+        # 단일 주문 USD 한도 클리핑
+        target_value_usd = max(min(target_value_usd, max_order_usd), -max_order_usd)
+
+        # 가용 현금 초과 방지 (매수 방향만)
+        if available_cash is not None and target_value_usd > 0:
+            target_value_usd = min(target_value_usd, available_cash * 0.95)  # 5% 버퍼
+
         target_qty = target_value_usd / current_price
-
-        # 얼마나 사고팔아야 하는가
         delta_qty = target_qty - current_qty
-
-        # HFT나 단기 트레이딩에서는 소수점 반올림(틱 사이즈)이 매우 중요함
-        # Crypto의 경우 통상 소수점 4자리 허용
         delta_qty = round(delta_qty, 4)
-
         return delta_qty

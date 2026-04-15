@@ -14,7 +14,7 @@ ROOT = ensure_project_root()
 
 from src.brokers.mock import MockBroker  # noqa: E402
 from src.brokers.paper import PaperBroker  # noqa: E402
-from src.ingestion.websocket_client import HFTStreamManager  # noqa: E402
+from src.ingestion.websocket_client import MultiSymbolHFTStreamManager as HFTStreamManager  # noqa: E402
 from src.monitoring import HealthMonitor, SoakRecordStore, SoakRunner  # noqa: E402
 from src.risk.manager import RiskManager  # noqa: E402
 
