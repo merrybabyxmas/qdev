@@ -587,6 +587,227 @@ EXPERIMENTS: tuple[ExperimentSpec, ...] = BASELINE_EXPERIMENTS + (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# Intraday / Swing pipeline library  (I001 – I006)
+# Feature profile: technical (daily proxy until hourly data pipeline is added)
+# implementation_mode="stub" → evaluated when hourly features available
+# ---------------------------------------------------------------------------
+INTRADAY_EXPERIMENTS: tuple[ExperimentSpec, ...] = (
+    _spec(
+        "I001",
+        "Intraday Momentum",
+        "Intraday Swing",
+        "stub",
+        "stub",
+        "lightgbm",
+        "residual_momentum",
+        allocation_mode="proportional_positive",
+        overlays=(),
+        note="Short-horizon momentum signal; promotes on hourly return autocorrelation.",
+    ),
+    _spec(
+        "I002",
+        "Intraday Mean Reversion",
+        "Intraday Swing",
+        "stub",
+        "stub",
+        "bayesian_linear",
+        "volatility_proxy",
+        allocation_mode="proportional_positive",
+        overlays=("inverse_vol_allocation",),
+        note="Mean-reversion overlay triggered by volatility spike; fades intraday moves.",
+    ),
+    _spec(
+        "I003",
+        "Burst-Volatility Gated Trend",
+        "Intraday Swing",
+        "stub",
+        "stub",
+        "lightgbm",
+        "volatility_proxy",
+        allocation_mode="proportional_positive",
+        overlays=("volatility_timing", "jump_filter"),
+        note="Trend-following with hard gate on vol-burst; reduces whipsaw in choppy sessions.",
+    ),
+    _spec(
+        "I004",
+        "Session-Aware Threshold Trader",
+        "Intraday Swing",
+        "stub",
+        "stub",
+        "linear",
+        "technical",
+        allocation_mode="equal_positive",
+        overlays=("volatility_timing",),
+        note="Opens/closes positions based on session-specific thresholds (open/close anomaly).",
+    ),
+    _spec(
+        "I005",
+        "Intraday Correlation Overlay",
+        "Intraday Swing",
+        "stub",
+        "stub",
+        "bayesian_linear",
+        "correlation_overlay",
+        allocation_mode="proportional_positive",
+        overlays=("correlation_penalty", "cvar_overlay"),
+        note="Cross-asset correlation filter; reduces exposure when crypto correlation spikes.",
+    ),
+    _spec(
+        "I006",
+        "Intraday Event-Risk Reduction",
+        "Intraday Swing",
+        "stub",
+        "stub",
+        "linear",
+        "news_shock_proxy",
+        allocation_mode="equal_positive",
+        overlays=("jump_filter",),
+        note="Reduces size or halts around detected macro shock windows.",
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# HFT / Microstructure pipeline library  (HFT_BASE, HFT_RISK, HFT_SDE,
+#   HFT_DL, HFT_EXEC, HFT_HYB)
+# implementation_mode="live" → not offline-backtested; evaluated via
+#   hft_evaluator.py from live tick data
+# ---------------------------------------------------------------------------
+HFT_EXPERIMENTS: tuple[ExperimentSpec, ...] = (
+    # --- HFT_BASE ---
+    _spec(
+        "HFT_BASE_001",
+        "Online SGD Microstructure Baseline",
+        "HFT Microstructure",
+        "validated",
+        "live",
+        "online_sgd",
+        "technical",
+        note="5-axis SGD online learner: obi, microprice_drift, spread, vpin, vol_burst.",
+    ),
+    _spec(
+        "HFT_BASE_002",
+        "Online LGBM Microstructure Baseline",
+        "HFT Microstructure",
+        "validated",
+        "live",
+        "lgbm_online",
+        "technical",
+        note="Incremental LGBM companion to SGD; same 5 features, tree-based nonlinearity.",
+    ),
+    _spec(
+        "HFT_BASE_003",
+        "OBI-Only Signal Baseline",
+        "HFT Microstructure",
+        "stub",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Order Book Imbalance single-feature baseline for ablation comparison.",
+    ),
+    # --- HFT_RISK ---
+    _spec(
+        "HFT_RISK_001",
+        "HFT Risk Overlay (Spread + Toxicity Halt)",
+        "HFT Microstructure",
+        "validated",
+        "live",
+        "online_sgd",
+        "technical",
+        overlays=("jump_filter",),
+        note="Mandatory overlay: halts on wide-spread (>50 bps) or VPIN toxicity (>0.8).",
+    ),
+    # --- HFT_SDE ---
+    _spec(
+        "HFT_SDE_001",
+        "Avellaneda-Stoikov Inventory-Aware Market Maker",
+        "HFT Microstructure",
+        "validated",
+        "live",
+        "online_sgd",
+        "technical",
+        note="SDE-based optimal quote skew; adjusts bid/ask spread by inventory and vol.",
+    ),
+    _spec(
+        "HFT_SDE_002",
+        "SDE with Regime-Adaptive Risk Aversion",
+        "HFT Microstructure",
+        "stub",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Extends HFT_SDE_001 with regime-specific gamma (risk aversion) parameter.",
+    ),
+    # --- HFT_DL ---
+    _spec(
+        "HFT_DL_001",
+        "Compact DeepLOB (1D-CNN + LSTM)",
+        "HFT Microstructure",
+        "validated",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Low-latency CNN+LSTM model on top-of-book snapshots; direction classification.",
+    ),
+    _spec(
+        "HFT_DL_002",
+        "DeepLOB with Attention Gate",
+        "HFT Microstructure",
+        "stub",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Extends HFT_DL_001 with a lightweight attention gate on LOB levels.",
+    ),
+    # --- HFT_EXEC ---
+    _spec(
+        "HFT_EXEC_001",
+        "Fill Probability Gate (Logistic Regression)",
+        "HFT Microstructure",
+        "validated",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Logistic regression fill-probability estimator; blocks low-fill-prob quotes.",
+    ),
+    _spec(
+        "HFT_EXEC_002",
+        "Adaptive Cancel-Replace Controller",
+        "HFT Microstructure",
+        "stub",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Dynamically adjusts cancel threshold based on short-term vol and spread.",
+    ),
+    # --- HFT_HYB ---
+    _spec(
+        "HFT_HYB_001",
+        "Hybrid SGD + Avellaneda-Stoikov",
+        "HFT Microstructure",
+        "stub",
+        "live",
+        "online_sgd",
+        "technical",
+        note="Combines SGD directional alpha with SDE inventory-aware quoting.",
+    ),
+    _spec(
+        "HFT_HYB_002",
+        "Hybrid DeepLOB + Fill Probability Gate",
+        "HFT Microstructure",
+        "stub",
+        "live",
+        "online_sgd",
+        "technical",
+        note="DeepLOB direction signal gated by fill-probability; reduces quote spam.",
+    ),
+)
+
+# Combined registry (all suites)
+ALL_EXPERIMENTS: tuple[ExperimentSpec, ...] = (
+    BASELINE_EXPERIMENTS + INTRADAY_EXPERIMENTS + HFT_EXPERIMENTS
+)
+
 
 def get_feature_columns(profile: str, frame: pd.DataFrame | None = None) -> list[str]:
     columns = list(FEATURE_PROFILES[profile])

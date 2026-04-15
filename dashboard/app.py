@@ -183,6 +183,7 @@ services = snapshot.get("services", {}) if isinstance(snapshot, dict) else {}
 collector_status = snapshot.get("collector_status", {}) if isinstance(snapshot, dict) else {}
 soak_summary = snapshot.get("soak_summary", {}) if isinstance(snapshot, dict) else {}
 model_scheduler_status = snapshot.get("model_scheduler_status", {}) if isinstance(snapshot, dict) else {}
+routing_policy = snapshot.get("routing_policy", {}) if isinstance(snapshot, dict) else {}
 
 st.markdown(
     f"""
@@ -581,7 +582,53 @@ else:
         else:
             st.info("No tick records available yet.")
 
-st.subheader("Routing")
+st.subheader("3-Layer Routing Policy")
+if routing_policy:
+    _rp_layers = routing_policy.get("layers", {})
+    _rp_regime = routing_policy.get("regime", "unknown")
+    _rp_ts = routing_policy.get("timestamp", "")
+
+    st.caption(f"Generated: {_rp_ts}  |  Regime: **{_rp_regime}**")
+
+    _layer_cols = st.columns(3)
+
+    def _layer_badge(active: bool) -> str:
+        return "🟢 ACTIVE" if active else "🔴 OFF"
+
+    with _layer_cols[0]:
+        _m = _rp_layers.get("macro_daily", {})
+        st.markdown(f"**Layer 1 — Macro / Daily** {_layer_badge(_m.get('active', False))}")
+        st.metric("Champion", _m.get("champion_pipeline_id", "-"))
+        st.caption(f"Regime hint: {_m.get('regime_hint', '-')}  |  Alloc scale: {_m.get('allocation_scale', 0):.0%}")
+        _challengers_m = _m.get("challenger_ids", [])
+        if _challengers_m:
+            st.caption(f"Challengers: {', '.join(_challengers_m)}")
+
+    with _layer_cols[1]:
+        _i = _rp_layers.get("intraday_swing", {})
+        st.markdown(f"**Layer 2 — Intraday / Swing** {_layer_badge(_i.get('active', False))}")
+        st.metric("Champion", _i.get("champion_pipeline_id") or "—")
+        st.caption(_i.get("reason", "-"))
+
+    with _layer_cols[2]:
+        _h = _rp_layers.get("hft", {})
+        st.markdown(f"**Layer 3 — HFT** {_layer_badge(_h.get('active', False))}")
+        st.metric("Champion", _h.get("champion_pipeline_id") or "—")
+        st.caption(f"allow_hft: {_h.get('allow_hft')}  |  {_h.get('reason', '-')}")
+        _challengers_h = _h.get("challenger_ids", [])
+        if _challengers_h:
+            st.caption(f"Challengers: {', '.join(_challengers_h)}")
+
+    # Mandatory overlays
+    _overlays = routing_policy.get("mandatory_overlays", {})
+    if _overlays:
+        with st.expander("Mandatory Overlays", expanded=False):
+            for k, v in _overlays.items():
+                st.markdown(f"**{k}** — {v.get('description', '')}  `{'ON' if v.get('active') else 'OFF'}`")
+else:
+    st.info("Routing policy not yet generated — run model cycle to populate.")
+
+st.subheader("Regime Routing Table")
 assignments = registry.get("regime_assignments", {}) if isinstance(registry, dict) else {}
 assignment_rows = []
 for regime_name, payload in assignments.items():

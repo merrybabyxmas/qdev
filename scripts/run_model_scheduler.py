@@ -14,8 +14,8 @@ from _bootstrap import ensure_project_root
 ROOT = ensure_project_root()
 
 from src.controlplane.artifacts import CONTROL_PLANE_ROOT, latest_experiment_run  # noqa: E402
+from src.controlplane.routing_policy import RoutingPolicyEngine  # noqa: E402
 from src.controlplane.snapshot import build_dashboard_snapshot  # noqa: E402
-from src.monitoring.control_plane import HFTControlPlane  # noqa: E402
 from src.utils.logger import logger  # noqa: E402
 
 
@@ -56,27 +56,43 @@ def _run_cycle(args: argparse.Namespace) -> tuple[dict[str, object], int]:
     completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
     snapshot = build_dashboard_snapshot()
 
-    # Generate HFT policy based on current regime
+    # Generate unified 3-layer routing policy
     try:
-        cp = HFTControlPlane(str(CONTROL_PLANE_ROOT / "hft_policy.json"))
-        regime = (
-            json.loads((CONTROL_PLANE_ROOT / "regime_snapshot.json").read_text()).get("regime", "neutral")
-            if (CONTROL_PLANE_ROOT / "regime_snapshot.json").exists()
-            else "neutral"
-        )
-        allow_hft = regime not in ("crash", "extreme_vol")
-        cp.generate_policy(
+        import pandas as pd
+        regime = "neutral"
+        if (CONTROL_PLANE_ROOT / "regime_snapshot.json").exists():
+            regime = json.loads((CONTROL_PLANE_ROOT / "regime_snapshot.json").read_text()).get("regime", "neutral")
+
+        leaderboard = pd.DataFrame()
+        lb_path = CONTROL_PLANE_ROOT / "leaderboard.csv"
+        if lb_path.exists():
+            leaderboard = pd.read_csv(lb_path)
+
+        rpe = RoutingPolicyEngine(str(CONTROL_PLANE_ROOT / "routing_policy.json"))
+        routing_policy = rpe.generate(
             regime=regime,
-            allow_hft=allow_hft,
+            leaderboard=leaderboard,
             symbol_configs={
-                "BTC/USD": {"enabled": True, "max_position_usd": 5000.0},
-                "ETH/USD": {"enabled": True, "max_position_usd": 3000.0},
+                "BTC/USD": {"enabled": True, "max_position_usd": 500.0},
+                "ETH/USD": {"enabled": True, "max_position_usd": 300.0},
             },
-            global_thresholds={"min_prediction_bps": 0.2, "max_spread_bps": 50.0},
+            hft_thresholds={"min_prediction_bps": 0.2, "max_spread_bps": 50.0},
         )
-        logger.info(f"HFT policy generated: regime={regime}, allow_hft={allow_hft}")
-    except Exception as _cp_err:
-        logger.warning(f"HFT policy generation skipped: {_cp_err}")
+        # Also write hft_policy.json for backwards-compat with HFT engine
+        hft_layer = routing_policy.get("layers", {}).get("hft", {})
+        hft_compat = {
+            "timestamp": routing_policy["timestamp"],
+            "regime": regime,
+            "allow_hft": hft_layer.get("allow_hft", False),
+            "symbols": hft_layer.get("symbols", {}),
+            "thresholds": hft_layer.get("thresholds", {}),
+        }
+        (CONTROL_PLANE_ROOT / "hft_policy.json").write_text(
+            json.dumps(hft_compat, indent=2), encoding="utf-8"
+        )
+        logger.info(f"Routing policy generated: regime={regime}")
+    except Exception as _rpe_err:
+        logger.warning(f"Routing policy generation skipped: {_rpe_err}")
 
     # Archive old model files to Google Drive if credentials are present
     _gdrive_token = ROOT / "secrets" / "gdrive_token.json"

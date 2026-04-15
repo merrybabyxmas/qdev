@@ -19,6 +19,7 @@ from src.controlplane.artifacts import (
 from src.controlplane.ranking import build_leaderboard
 from src.controlplane.regime import classify_current_regime
 from src.controlplane.router import build_router_registry
+from src.controlplane.routing_policy import RoutingPolicyEngine
 from src.controlplane.service import collect_service_statuses
 from src.evaluation.hft_evaluator import build_hft_leaderboard_rows
 
@@ -27,6 +28,7 @@ LEADERBOARD_JSON = CONTROL_PLANE_ROOT / "leaderboard.json"
 LEADERBOARD_CSV = CONTROL_PLANE_ROOT / "leaderboard.csv"
 REGISTRY_JSON = CONTROL_PLANE_ROOT / "champion_registry.json"
 REGIME_JSON = CONTROL_PLANE_ROOT / "regime_snapshot.json"
+ROUTING_POLICY_JSON = CONTROL_PLANE_ROOT / "routing_policy.json"
 DASHBOARD_JSON = CONTROL_PLANE_ROOT / "dashboard_snapshot.json"
 
 
@@ -117,6 +119,20 @@ def build_dashboard_snapshot() -> dict[str, Any]:
     soak_summary = _summarize_soak(soak_records)
     services = collect_service_statuses()
 
+    # Load or generate unified routing policy
+    routing_policy: dict[str, Any] = {}
+    try:
+        rpe = RoutingPolicyEngine(str(ROUTING_POLICY_JSON))
+        if ROUTING_POLICY_JSON.exists():
+            routing_policy = rpe.read()
+        else:
+            routing_policy = rpe.generate(
+                regime=str(regime["regime"]),
+                leaderboard=leaderboard,
+            )
+    except Exception:
+        pass
+
     snapshot = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "run_dir": str(run_dir) if run_dir is not None else None,
@@ -128,6 +144,7 @@ def build_dashboard_snapshot() -> dict[str, Any]:
         "soak_summary": soak_summary,
         "regime": regime,
         "registry": registry,
+        "routing_policy": routing_policy,
         "leaderboard_top": _serialize_frame(leaderboard, limit=20),
         "leaderboard_full_path": str(LEADERBOARD_CSV) if LEADERBOARD_CSV.exists() else None,
     }
