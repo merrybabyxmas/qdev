@@ -194,16 +194,22 @@ def build_hft_leaderboard_rows(
 
     rows: list[dict] = []
 
-    has_lgbm = "lgbm_prediction_bps" in df.columns
+    # Build the list of (tag, column, label) to evaluate — only include cols present in data
+    _CANDIDATE_MODELS = [
+        ("SGD",      "prediction_bps",          "Online SGD"),
+        ("LGBM",     "lgbm_prediction_bps",      "Online LGBM"),
+        ("Logistic", "logistic_prediction_bps",  "Logistic Classifier"),
+        ("LSTM",     "lstm_prediction_bps",       "Event LSTM"),
+        ("DeepLOB",  "deeplob_prediction_bps",    "DeepLOB"),
+        ("Ensemble", "ensemble_prediction_bps",   "Ensemble"),
+    ]
+    active_models = [(tag, col, label) for tag, col, label in _CANDIDATE_MODELS if col in df.columns]
 
     symbols = df["symbol"].unique() if "symbol" in df.columns else ["ALL"]
     for sym in symbols:
         sym_df = df[df["symbol"] == sym] if "symbol" in df.columns else df
 
-        for model_tag, pred_col, model_label in [
-            ("SGD", "prediction_bps", "Online SGD"),
-            *([("LGBM", "lgbm_prediction_bps", "Online LGBM")] if has_lgbm else []),
-        ]:
+        for model_tag, pred_col, model_label in active_models:
             metrics = _compute_symbol_metrics(sym_df, pred_col=pred_col)
             if not metrics:
                 continue

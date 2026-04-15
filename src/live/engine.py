@@ -183,10 +183,11 @@ class LiveTradingEngine:
         ])
 
         # 3. HFT_BASE_002: Online Logistic Direction Classifier
-        # Use SGD prediction sign as training label
         target_label = np.array([1 if pred_for_sym > 0.5 else (-1 if pred_for_sym < -0.5 else 0)])
         self.logistic_classifier.update(feat_vec.reshape(1, -1), target_label)
         logistic_pred_probs = self.logistic_classifier.predict_proba(feat_vec.reshape(1, -1))
+        # Convert class probabilities to signed bps signal: UP=+1, DOWN=-1 weighted by confidence
+        logistic_pred_bps = float((logistic_pred_probs[0, 2] - logistic_pred_probs[0, 0]) * 2.0)  # range [-2, +2]
 
         # Ensemble: SGD base + logistic modifier + LGBM blend
         ensemble_pred = pred_for_sym
@@ -198,17 +199,20 @@ class LiveTradingEngine:
             ensemble_pred = ensemble_pred * 0.7 + lgbm_pred_for_sym * 0.3
 
         # 4. HFT_DL_001 / HFT_DL_002: Sequence-based DL models
+        lstm_pred_bps = 0.0
+        deeplob_pred_bps = 0.0
         self.event_history[symbol].append(feat_vec)
         if len(self.event_history[symbol]) == self.dl_sequence_length:
             seq_tensor = torch.tensor(np.array(self.event_history[symbol]), dtype=torch.float32).unsqueeze(0)
             with torch.no_grad():
                 # HFT_DL_002: Event Sequence LSTM
-                lstm_out = self.event_lstm(seq_tensor).item()
-                ensemble_pred += lstm_out * 0.1
+                lstm_pred_bps = self.event_lstm(seq_tensor).item()
+                ensemble_pred += lstm_pred_bps * 0.1
 
                 # HFT_DL_001: Compact DeepLOB
                 lob_out = self.deeplob(seq_tensor)
                 lob_class = torch.argmax(lob_out, dim=1).item()
+                deeplob_pred_bps = float(lob_class - 1)  # -1 / 0 / +1
                 if lob_class == 2:    # Up
                     ensemble_pred += 0.5
                 elif lob_class == 0:  # Down
@@ -311,6 +315,9 @@ class LiveTradingEngine:
                     "market_state": current_state.name,
                     "prediction_bps": float(pred_for_sym),
                     "lgbm_prediction_bps": float(lgbm_pred_for_sym),
+                    "logistic_prediction_bps": float(logistic_pred_bps),
+                    "lstm_prediction_bps": float(lstm_pred_bps),
+                    "deeplob_prediction_bps": float(deeplob_pred_bps),
                     "ensemble_prediction_bps": float(ensemble_pred),
                     "target_weight": float(target_weight_for_sym),
                     "tick_count": int(self.ranker.tick_counts.get(symbol, 0)),
