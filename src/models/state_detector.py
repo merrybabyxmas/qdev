@@ -24,12 +24,12 @@ class MarketStateDetector:
     """
     def __init__(self,
                  high_vol_threshold: float = 0.5,
-                 wide_spread_threshold: float = 0.05,
+                 wide_spread_threshold_bps: float = 30.0,
                  toxic_vpin_threshold: float = 0.8,
                  trend_threshold: float = 0.001):
 
         self.high_vol_threshold = high_vol_threshold
-        self.wide_spread_threshold = wide_spread_threshold
+        self.wide_spread_threshold_bps = wide_spread_threshold_bps  # bps 기준 (예: 30 bps)
         self.toxic_vpin_threshold = toxic_vpin_threshold
         self.trend_threshold = trend_threshold
 
@@ -41,10 +41,14 @@ class MarketStateDetector:
         """
         vol = features.get("volatility_burst", 0.0)
         spread = features.get("spread", 0.0)
+        mid = features.get("mid_price", 0.0)
         toxicity = features.get("toxicity_vpin", 0.0)
         price_drift = features.get("microprice_drift", 0.0)
         is_event = features.get("is_event_window", False)
         is_anomaly_time = features.get("is_anomaly_time", False)
+
+        # spread를 bps로 변환 (달러 절대값이 아닌 상대적 비율 기준)
+        spread_bps = (spread / mid * 10000.0) if mid > 0 else 0.0
 
         # 1. 시간대 / 이벤트 오버라이드 (가장 강력한 상태)
         if is_event:
@@ -52,8 +56,8 @@ class MarketStateDetector:
         if is_anomaly_time:
             return MarketState.TIME_ANOMALY
 
-        # 2. 비유동성 / 얕은 호가
-        if spread > self.wide_spread_threshold:
+        # 2. 비유동성 / 얕은 호가 (bps 기준: 30 bps 초과 시 비유동성)
+        if spread_bps > self.wide_spread_threshold_bps:
             return MarketState.WIDE_SPREAD_ILLIQUID
 
         # 3. 고변동성 영역
