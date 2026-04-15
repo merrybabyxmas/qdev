@@ -288,43 +288,70 @@ with left:
     if leaderboard.empty:
         st.info("Leaderboard not available yet.")
     else:
-        chart_frame = leaderboard.head(12).copy()
-        bar = px.bar(
-            chart_frame,
-            x="pipeline_id",
-            y="final_score",
-            color="family",
-            hover_data=["decision", "test_summary.total_return_pct", "test_summary.sharpe_ratio"],
-            title="Pipeline Final Score",
-        )
-        st.plotly_chart(bar, use_container_width=True)
+        _MACRO_DAILY_FAMILIES = {"Deep Learning", "Financial + DL", "Bayesian", "SDE", "Factor Model"}
+        _INTRADAY_FAMILIES = {"Intraday", "Intraday Swing"}
+        _HFT_FAMILIES = {"HFT", "HFT Microstructure", "OnlineSGD"}
 
-        chart_frame["_sharpe_size"] = chart_frame["test_summary.sharpe_ratio"].clip(lower=0)
-        scatter = px.scatter(
-            chart_frame,
-            x="test_summary.max_drawdown_pct",
-            y="test_summary.total_return_pct",
-            size="_sharpe_size",
-            color="family",
-            hover_name="pipeline_id",
-            hover_data=["test_summary.sharpe_ratio"],
-            title="Return vs Drawdown",
-        )
-        st.plotly_chart(scatter, use_container_width=True)
-        st.dataframe(
-            chart_frame[
-                [
-                    "pipeline_id",
-                    "family",
-                    "decision",
-                    "final_score",
-                    "test_summary.total_return_pct",
-                    "test_summary.sharpe_ratio",
-                    "test_summary.max_drawdown_pct",
-                ]
-            ],
-            use_container_width=True,
-        )
+        def _slice_horizon(df: pd.DataFrame, families: set[str]) -> pd.DataFrame:
+            if "family" not in df.columns:
+                return pd.DataFrame()
+            return df[df["family"].isin(families)].copy()
+
+        _lb_macro = _slice_horizon(leaderboard, _MACRO_DAILY_FAMILIES)
+        _lb_intraday = _slice_horizon(leaderboard, _INTRADAY_FAMILIES)
+        _lb_hft = _slice_horizon(leaderboard, _HFT_FAMILIES)
+
+        _lb_tabs = st.tabs(["Macro / Daily", "Intraday / Swing", "HFT Microstructure"])
+
+        def _render_leaderboard_tab(tab_df: pd.DataFrame, title: str) -> None:
+            if tab_df.empty:
+                st.info(f"No {title} models in leaderboard yet.")
+                return
+            _frame = tab_df.head(12).copy()
+            _needed_cols = {"pipeline_id", "family", "decision", "final_score",
+                            "test_summary.total_return_pct", "test_summary.sharpe_ratio",
+                            "test_summary.max_drawdown_pct"}
+            if _needed_cols.issubset(_frame.columns):
+                _bar = px.bar(
+                    _frame,
+                    x="pipeline_id",
+                    y="final_score",
+                    color="family",
+                    hover_data=["decision", "test_summary.total_return_pct", "test_summary.sharpe_ratio"],
+                    title=f"{title} — Pipeline Final Score",
+                )
+                st.plotly_chart(_bar, use_container_width=True)
+                _frame["_sharpe_size"] = _frame["test_summary.sharpe_ratio"].clip(lower=0)
+                _scatter = px.scatter(
+                    _frame,
+                    x="test_summary.max_drawdown_pct",
+                    y="test_summary.total_return_pct",
+                    size="_sharpe_size",
+                    color="family",
+                    hover_name="pipeline_id",
+                    hover_data=["test_summary.sharpe_ratio"],
+                    title=f"{title} — Return vs Drawdown",
+                )
+                st.plotly_chart(_scatter, use_container_width=True)
+                st.dataframe(
+                    _frame[[
+                        "pipeline_id", "family", "decision", "final_score",
+                        "test_summary.total_return_pct", "test_summary.sharpe_ratio",
+                        "test_summary.max_drawdown_pct",
+                    ]],
+                    use_container_width=True,
+                )
+            else:
+                st.dataframe(_frame, use_container_width=True)
+
+        with _lb_tabs[0]:
+            _render_leaderboard_tab(_lb_macro, "Macro / Daily")
+
+        with _lb_tabs[1]:
+            _render_leaderboard_tab(_lb_intraday, "Intraday / Swing")
+
+        with _lb_tabs[2]:
+            _render_leaderboard_tab(_lb_hft, "HFT Microstructure")
 
 with right:
     st.subheader("Runtime Status")

@@ -130,7 +130,10 @@ def build_router_registry(
     existing_registry: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     existing_registry = existing_registry or {}
-    candidates = leaderboard[leaderboard.get("promotion_candidate", False)].copy()
+    if "promotion_candidate" in leaderboard.columns:
+        candidates = leaderboard[leaderboard["promotion_candidate"] == True].copy()  # noqa: E712
+    else:
+        candidates = leaderboard.copy()
     if candidates.empty:
         candidates = leaderboard.copy()
 
