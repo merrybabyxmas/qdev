@@ -8,12 +8,19 @@ except Exception:  # pragma: no cover - optional dependency guard
     CryptoDataStream = None
 
 from src.state.ring_buffers import TickRingBuffer, QuoteRingBuffer
-from src.features.microstructure.imbalance import compute_order_book_imbalance, compute_microprice, compute_spread
+from src.features.microstructure.imbalance import (compute_order_book_imbalance,
+                                                  compute_microprice,
+                                                  compute_spread,
+                                                  compute_trade_intensity,
+                                                  compute_toxicity_vpin_proxy,
+                                                  compute_volatility_burst)
 from src.utils.logger import logger
 
-class HFTStreamManager:
+class MultiSymbolHFTStreamManager:
     """
-    이벤트 기반(Websocket) 실시간 HFT 스트림 수신 및 피처 갱신.
+    다중 종목(Multi-symbol) 이벤트 기반(Websocket) 실시간 HFT 스트림 수신 및 피처 갱신.
+    각 종목별로 개별 버퍼(Ring Buffer)를 유지하고, 체결/호가 시마다 개별 피처를 발생시킴.
+    또한 오프라인 리플레이(Replay) 기능을 지원함.
     """
     def __init__(self, api_key: str = "mock", secret_key: str = "mock", symbol: str = "BTC/USD", enable_live_stream: bool = False):
         self.symbol = symbol
@@ -90,10 +97,17 @@ class HFTStreamManager:
             taker_side = getattr(data, "side", None)
         side = 1 if str(taker_side).upper().startswith("B") else -1
 
-        self.trade_buffer.append(t, p, s, side)
+        taker_side = getattr(data, "taker_side", None)
+        if taker_side is None:
+            taker_side = getattr(data, "side", None)
+        side = 1 if str(taker_side).upper().startswith("B") else -1
 
-        logger.debug(f"Trade event: {self.symbol} @ {p} (size: {s})")
-        self._trigger_features()
+        sym = data.symbol
+
+        if sym in self.trade_buffers:
+            self.trade_buffers[sym].append(t, p, s, side)
+            logger.debug(f"Trade: {sym} @ {p} ({s})")
+            self._trigger_features(sym)
 
     async def _quote_handler(self, data: Any):
         """호가(Quote / Top of Book) 이벤트 처리기"""
@@ -103,13 +117,14 @@ class HFTStreamManager:
         bs = float(data.bid_size)
         ap = float(data.ask_price)
         as_ = float(data.ask_size)
+        sym = data.symbol
 
-        self.quote_buffer.append(t, bp, bs, ap, as_)
+        if sym in self.quote_buffers:
+            self.quote_buffers[sym].append(t, bp, bs, ap, as_)
+            logger.debug(f"Quote: {sym} B {bs}@{bp} - A {as_}@{ap}")
+            self._trigger_features(sym)
 
-        logger.debug(f"Quote event: B {bs}@{bp} - A {as_}@{ap}")
-        self._trigger_features()
-
-    def _trigger_features(self):
+    def _trigger_features(self, symbol: str):
         """틱, 호가 업데이트 후 즉각적인 마이크로스트럭처 계산"""
         quote = self.quote_buffer.get_latest()
         if quote[1] == 0.0:  # No quote yet
@@ -117,17 +132,27 @@ class HFTStreamManager:
 
         timestamp, bp, bs, ap, ask_s = quote
 
-        # Calculate instant microstructure features
         obi = compute_order_book_imbalance(bs, ask_s)
         microprice = compute_microprice(bp, bs, ap, ask_s)
         spread = compute_spread(bp, ap)
 
-        # Publish Event
+        recent_trades = self.trade_buffers[symbol].get_recent(50)
+        intensity = compute_trade_intensity(recent_trades, window_ms=1000.0)
+        toxicity = compute_toxicity_vpin_proxy(recent_trades, window_ms=1000.0)
+        vol_burst = compute_volatility_burst(recent_trades, window_ms=1000.0)
+
         feature_event = {
             "timestamp": timestamp,
+            "bid": bp,
+            "bid_size": bs,
+            "ask": ap,
+            "ask_size": ask_s,
             "microprice": microprice,
             "obi": obi,
             "spread": spread,
+            "intensity": intensity,
+            "toxicity_vpin": toxicity,
+            "volatility_burst": vol_burst,
             "mid_price": (bp + ap) / 2.0
         }
         self.last_feature_event = feature_event
