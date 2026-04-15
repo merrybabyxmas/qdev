@@ -48,7 +48,7 @@ def _load_ticks(path: Path, lookback: int = 10_000) -> pd.DataFrame:
     return df.dropna(subset=["timestamp", "price"]).reset_index(drop=True)
 
 
-def _compute_symbol_metrics(df: pd.DataFrame) -> dict:
+def _compute_symbol_metrics(df: pd.DataFrame, pred_col: str = "prediction_bps") -> dict:
     """Compute performance metrics for a single symbol's tick series."""
     df = df.sort_values("timestamp").reset_index(drop=True)
     n = len(df)
@@ -61,7 +61,7 @@ def _compute_symbol_metrics(df: pd.DataFrame) -> dict:
     price_change_bps = price_change * 10_000
 
     tw = df.get("target_weight", pd.Series(0.0, index=df.index)).fillna(0.0)
-    pred_bps = df.get("prediction_bps", pd.Series(0.0, index=df.index)).fillna(0.0)
+    pred_bps = df[pred_col].fillna(0.0) if pred_col in df.columns else pd.Series(0.0, index=df.index)
 
     # Tick P&L as fraction of equity
     tick_pnl = (tw * price_change).dropna()
@@ -194,84 +194,92 @@ def build_hft_leaderboard_rows(
 
     rows: list[dict] = []
 
+    has_lgbm = "lgbm_prediction_bps" in df.columns
+
     symbols = df["symbol"].unique() if "symbol" in df.columns else ["ALL"]
     for sym in symbols:
         sym_df = df[df["symbol"] == sym] if "symbol" in df.columns else df
-        metrics = _compute_symbol_metrics(sym_df)
-        if not metrics:
-            continue
 
-        summary = _summary_dict(metrics)
-        final_score = _hft_final_score(metrics)
+        for model_tag, pred_col, model_label in [
+            ("SGD", "prediction_bps", "Online SGD"),
+            *([("LGBM", "lgbm_prediction_bps", "Online LGBM")] if has_lgbm else []),
+        ]:
+            metrics = _compute_symbol_metrics(sym_df, pred_col=pred_col)
+            if not metrics:
+                continue
 
-        row = {
-            "pipeline_id": f"HFT_SGD_{sym.replace('/', '_')}",
-            "name": f"Online SGD — {sym}",
-            "family": "HFT Microstructure",
-            "doc_status": "live",
-            "implementation_mode": "direct",
-            "base_model": "online_sgd",
-            "feature_profile": "microstructure_5axis",
-            "allocation_mode": "hft_weight",
-            "overlays": "[]",
-            "risk_cap": 0.5,
-            "max_drawdown": 0.15,
-            "decision": "live",
-            "feature_count": 5,
-            "runtime_seconds": 0.0,
-            "notes": f"Live OnlineSGD | {metrics['tick_count']:,} ticks | SGD updates: {total_updates:,}",
-            "source_doc": "live_engine",
-            "status": "ok",
-            # flat summary columns (train == validation == test for live model)
-            "train_summary.total_return_pct": summary["total_return_pct"],
-            "train_summary.annualized_return_pct": summary["annualized_return_pct"],
-            "train_summary.annualized_vol_pct": 0.0,
-            "train_summary.sharpe_ratio": summary["sharpe_ratio"],
-            "train_summary.sortino_ratio": summary["sortino_ratio"],
-            "train_summary.max_drawdown_pct": summary["max_drawdown_pct"],
-            "train_summary.win_rate_pct": summary["win_rate_pct"],
-            "train_summary.avg_turnover": 0.0,
-            "train_summary.total_turnover": 0.0,
-            "train_summary.avg_gross_exposure": 0.0,
-            "train_summary.cost_drag_pct": 0.0,
-            "train_summary.active_days": 0,
-            "train_summary.final_equity": summary["final_equity"],
-            "validation_summary.total_return_pct": summary["total_return_pct"],
-            "validation_summary.annualized_return_pct": summary["annualized_return_pct"],
-            "validation_summary.annualized_vol_pct": 0.0,
-            "validation_summary.sharpe_ratio": summary["sharpe_ratio"],
-            "validation_summary.sortino_ratio": summary["sortino_ratio"],
-            "validation_summary.max_drawdown_pct": summary["max_drawdown_pct"],
-            "validation_summary.win_rate_pct": summary["win_rate_pct"],
-            "validation_summary.avg_turnover": 0.0,
-            "validation_summary.total_turnover": 0.0,
-            "validation_summary.avg_gross_exposure": 0.0,
-            "validation_summary.cost_drag_pct": 0.0,
-            "validation_summary.active_days": 0,
-            "validation_summary.final_equity": summary["final_equity"],
-            "test_summary.total_return_pct": summary["total_return_pct"],
-            "test_summary.annualized_return_pct": summary["annualized_return_pct"],
-            "test_summary.annualized_vol_pct": 0.0,
-            "test_summary.sharpe_ratio": summary["sharpe_ratio"],
-            "test_summary.sortino_ratio": summary["sortino_ratio"],
-            "test_summary.max_drawdown_pct": summary["max_drawdown_pct"],
-            "test_summary.win_rate_pct": summary["win_rate_pct"],
-            "test_summary.avg_turnover": 0.0,
-            "test_summary.total_turnover": 0.0,
-            "test_summary.avg_gross_exposure": 0.0,
-            "test_summary.cost_drag_pct": 0.0,
-            "test_summary.active_days": 0,
-            "test_summary.final_equity": summary["final_equity"],
-            # HFT-specific extras (stored for display, not used by build_leaderboard)
-            "hft.hit_rate_pct": metrics["hit_rate_pct"],
-            "hft.mae_bps": metrics["mae_bps"],
-            "hft.tick_count": metrics["tick_count"],
-            "hft.avg_spread_bps": metrics["avg_spread_bps"],
-            "final_score": final_score,
-            "score_rank": 0,
-            "promotion_candidate": False,
-        }
-        rows.append(row)
+            summary = _summary_dict(metrics)
+            final_score = _hft_final_score(metrics)
+
+            row = {
+                "pipeline_id": f"HFT_{model_tag}_{sym.replace('/', '_')}",
+                "name": f"{model_label} — {sym}",
+                "family": "HFT Microstructure",
+                "doc_status": "live",
+                "implementation_mode": "direct",
+                "base_model": model_tag.lower() + "_online",
+                "feature_profile": "microstructure_5axis",
+                "allocation_mode": "hft_weight",
+                "overlays": "[]",
+                "risk_cap": 0.5,
+                "max_drawdown": 0.15,
+                "decision": "live",
+                "feature_count": 5,
+                "runtime_seconds": 0.0,
+                "notes": (
+                    f"Live {model_label} | {metrics['tick_count']:,} ticks"
+                    + (f" | updates: {total_updates:,}" if model_tag == "SGD" else "")
+                ),
+                "source_doc": "live_engine",
+                "status": "ok",
+                "train_summary.total_return_pct": summary["total_return_pct"],
+                "train_summary.annualized_return_pct": summary["annualized_return_pct"],
+                "train_summary.annualized_vol_pct": 0.0,
+                "train_summary.sharpe_ratio": summary["sharpe_ratio"],
+                "train_summary.sortino_ratio": summary["sortino_ratio"],
+                "train_summary.max_drawdown_pct": summary["max_drawdown_pct"],
+                "train_summary.win_rate_pct": summary["win_rate_pct"],
+                "train_summary.avg_turnover": 0.0,
+                "train_summary.total_turnover": 0.0,
+                "train_summary.avg_gross_exposure": 0.0,
+                "train_summary.cost_drag_pct": 0.0,
+                "train_summary.active_days": 0,
+                "train_summary.final_equity": summary["final_equity"],
+                "validation_summary.total_return_pct": summary["total_return_pct"],
+                "validation_summary.annualized_return_pct": summary["annualized_return_pct"],
+                "validation_summary.annualized_vol_pct": 0.0,
+                "validation_summary.sharpe_ratio": summary["sharpe_ratio"],
+                "validation_summary.sortino_ratio": summary["sortino_ratio"],
+                "validation_summary.max_drawdown_pct": summary["max_drawdown_pct"],
+                "validation_summary.win_rate_pct": summary["win_rate_pct"],
+                "validation_summary.avg_turnover": 0.0,
+                "validation_summary.total_turnover": 0.0,
+                "validation_summary.avg_gross_exposure": 0.0,
+                "validation_summary.cost_drag_pct": 0.0,
+                "validation_summary.active_days": 0,
+                "validation_summary.final_equity": summary["final_equity"],
+                "test_summary.total_return_pct": summary["total_return_pct"],
+                "test_summary.annualized_return_pct": summary["annualized_return_pct"],
+                "test_summary.annualized_vol_pct": 0.0,
+                "test_summary.sharpe_ratio": summary["sharpe_ratio"],
+                "test_summary.sortino_ratio": summary["sortino_ratio"],
+                "test_summary.max_drawdown_pct": summary["max_drawdown_pct"],
+                "test_summary.win_rate_pct": summary["win_rate_pct"],
+                "test_summary.avg_turnover": 0.0,
+                "test_summary.total_turnover": 0.0,
+                "test_summary.avg_gross_exposure": 0.0,
+                "test_summary.cost_drag_pct": 0.0,
+                "test_summary.active_days": 0,
+                "test_summary.final_equity": summary["final_equity"],
+                "hft.hit_rate_pct": metrics["hit_rate_pct"],
+                "hft.mae_bps": metrics["mae_bps"],
+                "hft.tick_count": metrics["tick_count"],
+                "hft.avg_spread_bps": metrics["avg_spread_bps"],
+                "final_score": final_score,
+                "score_rank": 0,
+                "promotion_candidate": False,
+            }
+            rows.append(row)
 
     if not rows:
         return pd.DataFrame()

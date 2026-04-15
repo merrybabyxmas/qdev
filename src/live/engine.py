@@ -51,6 +51,16 @@ class LiveTradingEngine:
             except Exception as _sgd_err:
                 logger.warning(f"Could not load SGD state: {_sgd_err}")
 
+        # Load persisted OnlineLGBM state if available
+        from src.models.lgbm_online import OnlineLightGBMRanker
+        _lgbm_path = CONTROL_PLANE_ROOT / "models" / "lgbm_online.pkl"
+        if _lgbm_path.exists():
+            try:
+                self.ranker.lgbm = OnlineLightGBMRanker.load(str(_lgbm_path))
+                logger.info("Loaded existing OnlineLGBM state from disk.")
+            except Exception as _lgbm_err:
+                logger.warning(f"Could not load LGBM state: {_lgbm_err}")
+
         # Load the HFT champion model from the specialized leaderboard
         try:
             self.registry = ChampionRegistry()
@@ -128,13 +138,14 @@ class LiveTradingEngine:
         current_state = self.detector.detect_state(feature_event)
 
         # 2. Continuous Cross-sectional Ranking & Online Update
-        preds, raw_targets = self.ranker.update_and_predict(symbol, feature_event)
+        sgd_preds, lgbm_preds, raw_targets = self.ranker.update_and_predict(symbol, feature_event)
 
         # 3. Apply Portfolio Caps
         target_weights = self.risk_manager.apply_position_caps(raw_targets)
 
         target_weight_for_sym = target_weights.get(symbol, 0.0)
-        pred_for_sym = preds.get(symbol, 0.0)
+        pred_for_sym = sgd_preds.get(symbol, 0.0)
+        lgbm_pred_for_sym = lgbm_preds.get(symbol, 0.0)
 
         if self.tick_counter % 50 == 0:
             logger.info(f"[{symbol}] State: {current_state.name} | Target W: {target_weight_for_sym:.2%} | Raw Pred: {pred_for_sym:+.2f} bps")
@@ -213,6 +224,7 @@ class LiveTradingEngine:
                     "intensity": float(fe.get("intensity", 0.0)),
                     "market_state": current_state.name,
                     "prediction_bps": float(pred_for_sym),
+                    "lgbm_prediction_bps": float(lgbm_pred_for_sym),
                     "target_weight": float(target_weight_for_sym),
                     "tick_count": int(self.ranker.tick_counts.get(symbol, 0)),
                 }
@@ -234,6 +246,8 @@ class LiveTradingEngine:
                     "model": {
                         "total_updates": int(total_ticks),
                         "n_features": 5,
+                        "lgbm_updates": int(self.ranker.lgbm.total_updates),
+                        "lgbm_fitted": bool(self.ranker.lgbm.is_fitted),
                     },
                     "broker": {
                         "cash": float(getattr(self.broker, "cash", self.cached_equity)),
@@ -258,7 +272,7 @@ class LiveTradingEngine:
             except Exception as _e:
                 logger.debug(f"[HFT status write] skipped: {_e}")
 
-        # Save OnlineSGD state every 500 ticks
+        # Save model states every 500 ticks
         if self.tick_counter % 500 == 0:
             try:
                 _sgd_save_path = CONTROL_PLANE_ROOT / "models" / "sgd_online.pkl"
@@ -266,6 +280,13 @@ class LiveTradingEngine:
                 logger.debug(f"[SGD save] persisted at tick {self.tick_counter}")
             except Exception as _sgd_e:
                 logger.debug(f"[SGD save] skipped: {_sgd_e}")
+            try:
+                if self.ranker.lgbm.is_fitted:
+                    _lgbm_save_path = CONTROL_PLANE_ROOT / "models" / "lgbm_online.pkl"
+                    self.ranker.lgbm.save(str(_lgbm_save_path))
+                    logger.debug(f"[LGBM save] persisted at tick {self.tick_counter}")
+            except Exception as _lgbm_e:
+                logger.debug(f"[LGBM save] skipped: {_lgbm_e}")
 
         # Simulate Matching Process if running offline/simulation broker
         if self.is_simulation:

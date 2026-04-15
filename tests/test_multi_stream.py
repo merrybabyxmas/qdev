@@ -20,12 +20,14 @@ class TestMultiStreamAndRanker(unittest.TestCase):
             "toxicity_vpin": 0.1, "volatility_burst": 0.1, "mid_price": 50.05
         }
 
-        preds_btc, w_btc = ranker.update_and_predict("BTC", feature_btc)
+        preds_btc, lgbm_btc, w_btc = ranker.update_and_predict("BTC", feature_btc)
         self.assertIn("BTC", preds_btc)
+        self.assertIn("BTC", lgbm_btc)
         self.assertEqual(len(w_btc), 2)
 
-        preds_eth, w_eth = ranker.update_and_predict("ETH", feature_eth)
+        preds_eth, lgbm_eth, w_eth = ranker.update_and_predict("ETH", feature_eth)
         self.assertIn("ETH", preds_eth)
+        self.assertIn("ETH", lgbm_eth)
 
 if __name__ == '__main__':
     unittest.main()

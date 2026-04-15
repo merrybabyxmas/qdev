@@ -1,17 +1,20 @@
 import numpy as np
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from src.models.sgd_online import OnlineSGDRegressor
+from src.models.lgbm_online import OnlineLightGBMRanker
 from src.utils.logger import logger
+
 
 class RealTimeCrossSectionalRanker:
     """
-    다수 종목의 실시간 피처를 받아들이고,
-    Online SGD 모델을 통해 모든 종목의 단기 상승률(Alpha)을 연속 예측한 뒤,
-    이를 바탕으로 크로스섹셔널(Cross-Sectional) 랭킹 및 타깃 포트폴리오 비중을 지속적으로 산출함.
+    다수 종목의 실시간 피처를 받아들이고, SGD / LGBM 두 모델을 병렬로 학습·예측.
+    SGD 예측값을 주 트레이딩 신호(target_weight)로 사용하고,
+    LGBM 예측값은 비교·리더보드용으로 별도 반환.
     """
     def __init__(self, symbols: List[str], target_lookahead: int = 5):
         self.symbols = symbols
         self.model = OnlineSGDRegressor(learning_rate='constant', eta0=0.01)
+        self.lgbm = OnlineLightGBMRanker(learning_rate=0.05, n_estimators_per_update=5, warmup_ticks=50)
         self.target_lookahead = target_lookahead
 
         # State Tracking
@@ -22,19 +25,20 @@ class RealTimeCrossSectionalRanker:
         self.history_features = {sym: [] for sym in symbols}
         self.history_mids = {sym: [] for sym in symbols}
 
-    def update_and_predict(self, symbol: str, features_dict: Dict[str, Any]) -> Dict[str, float]:
+    def update_and_predict(
+        self, symbol: str, features_dict: Dict[str, Any]
+    ) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float]]:
         """
-        1틱이 들어올 때마다:
-        1. 해당 종목의 과거 피처로 타깃이 생성가능해졌다면 모델을 점진적 학습(Update)
-        2. 최신 피처로 해당 종목의 신호 강도 예측
-        3. 전체 종목의 최신 예측치 기반 랭킹 업데이트 및 Target Weights 반환
+        Returns:
+            sgd_predictions  — dict[symbol → bps]  (primary trading signal)
+            lgbm_predictions — dict[symbol → bps]  (secondary comparison signal)
+            target_weights   — dict[symbol → weight] (from SGD)
         """
         self.tick_counts[symbol] += 1
         current_mid = features_dict["mid_price"]
 
-        # 1. Feature Extraction
-        # 특성 벡터 구성 (간소화: OBI, Microprice Drift, Spread, Toxicity, Vol Burst)
-        last_mid = self.history_mids[symbol][-1] if len(self.history_mids[symbol]) > 0 else current_mid
+        # Feature vector (5-axis microstructure)
+        last_mid = self.history_mids[symbol][-1] if self.history_mids[symbol] else current_mid
         mprice_drift = (features_dict["microprice"] - last_mid) / last_mid if last_mid > 0 else 0.0
 
         ml_features = np.array([
@@ -42,39 +46,45 @@ class RealTimeCrossSectionalRanker:
             mprice_drift,
             features_dict["spread"],
             features_dict["toxicity_vpin"],
-            features_dict["volatility_burst"]
+            features_dict["volatility_burst"],
         ])
 
         self.history_features[symbol].append(ml_features)
         self.history_mids[symbol].append(current_mid)
         self.latest_features[symbol] = features_dict
 
-        # 2. Online Learning (SGD Partial Fit)
+        # Online learning — both models update on the same lagged target
         tc = self.tick_counts[symbol]
         if tc > self.target_lookahead:
             idx = tc - self.target_lookahead - 1
             past_features = self.history_features[symbol][idx].reshape(1, -1)
             past_mid = self.history_mids[symbol][idx]
+            target_return = np.array([(current_mid - past_mid) / past_mid * 10000.0])  # bps
 
-            target_return = np.array([(current_mid - past_mid) / past_mid * 10000.0]) # bps
             self.model.update(past_features, target_return)
 
-        # 3. Prediction & Ranking
-        predictions = {}
+            # LGBM requires a small warmup before first training
+            if tc >= self.lgbm.warmup_ticks:
+                self.lgbm.update(past_features, target_return)
+
+        # SGD predictions (all symbols)
+        sgd_predictions: Dict[str, float] = {}
+        lgbm_predictions: Dict[str, float] = {}
         for sym in self.symbols:
-            if len(self.history_features[sym]) > 0:
+            if self.history_features[sym]:
                 feat_vec = self.history_features[sym][-1].reshape(1, -1)
-                predictions[sym] = self.model.predict(feat_vec)[0]
+                sgd_predictions[sym] = float(self.model.predict(feat_vec)[0])
+                lgbm_predictions[sym] = float(self.lgbm.predict(feat_vec)[0])
             else:
-                predictions[sym] = 0.0
+                sgd_predictions[sym] = 0.0
+                lgbm_predictions[sym] = 0.0
 
-        # 4. Convert Predictions to Target Weights (Positive Only for simplicity)
-        positive_preds = {k: v for k, v in predictions.items() if v > 0.0}
+        # Target weights from SGD (positive-only, proportional)
+        positive_preds = {k: v for k, v in sgd_predictions.items() if v > 0.0}
         total_pred = sum(positive_preds.values())
-
         target_weights = {sym: 0.0 for sym in self.symbols}
         if total_pred > 0:
             for sym, pred in positive_preds.items():
-                target_weights[sym] = pred / total_pred # Weight by confidence
+                target_weights[sym] = pred / total_pred
 
-        return predictions, target_weights
+        return sgd_predictions, lgbm_predictions, target_weights
