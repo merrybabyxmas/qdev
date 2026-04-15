@@ -275,8 +275,27 @@ def main() -> int:
     output_dir = args.output_dir or (DEFAULT_RUN_ROOT / run_tag)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    from src.utils.logger import logger as _logger  # noqa: E402 (already available via src)
+
+    MODEL_STORE = ROOT / "artifacts" / "models"
+    MODEL_STORE.mkdir(parents=True, exist_ok=True)
+
     runner = CandidateBatchRunner(bundle, output_dir=output_dir)
     batch = finalize_decisions(runner.run(specs, baseline_pipeline_id=args.baseline_pipeline_id))
+
+    # Save weights for every promoted / reference model that carries a model_obj
+    _ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    for _outcome in batch.outcomes:
+        if _outcome.decision in ("promote", "reference") and _outcome.model_obj is not None:
+            _ext = ".pt" if hasattr(_outcome.model_obj, "state_dict") else ".pkl"
+            _save_path = MODEL_STORE / _outcome.spec.pipeline_id / f"{_ts}{_ext}"
+            _save_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _outcome.model_obj.save(str(_save_path))
+                _logger.info(f"Saved model {_outcome.spec.pipeline_id} → {_save_path}")
+            except Exception as _save_err:
+                _logger.warning(f"Could not save model {_outcome.spec.pipeline_id}: {_save_err}")
+
     frame = results_to_frame(batch)
     frame.to_csv(output_dir / "results.csv", index=False)
     (output_dir / "results.json").write_text(json.dumps(frame.to_dict(orient="records"), indent=2, default=str), encoding="utf-8")

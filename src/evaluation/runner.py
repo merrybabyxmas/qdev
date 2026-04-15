@@ -220,6 +220,7 @@ class ExperimentOutcome:
     runtime_seconds: float
     notes: str = ""
     status: str = "ok"
+    model_obj: object = field(default=None, repr=False)  # not serialised; holds trained model
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -358,6 +359,7 @@ class CandidateBatchRunner:
             feature_count=len(feature_columns),
             runtime_seconds=runtime,
             notes=notes,
+            model_obj=aux.get("model"),
         )
 
 

@@ -78,6 +78,25 @@ def _run_cycle(args: argparse.Namespace) -> tuple[dict[str, object], int]:
     except Exception as _cp_err:
         logger.warning(f"HFT policy generation skipped: {_cp_err}")
 
+    # Archive old model files to Google Drive if credentials are present
+    _gdrive_token = ROOT / "secrets" / "gdrive_token.json"
+    if _gdrive_token.exists():
+        try:
+            subprocess.run(
+                [
+                    str(PYTHON if PYTHON.exists() else _python_executable()),
+                    str(ROOT / "scripts" / "archive_to_gdrive.py"),
+                    "--models-only",
+                    "--max-models", "20",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except Exception as _arc_err:
+            logger.debug(f"Model archive skipped: {_arc_err}")
+
     latest_run = latest_experiment_run()
 
     payload = {

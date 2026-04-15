@@ -50,6 +50,7 @@ CREDENTIALS_PATH = Path(os.environ.get("GDRIVE_CREDENTIALS", str(SECRETS_DIR / "
 DATA_RAW_DIR = ROOT / "artifacts" / "data" / "raw"
 DATA_FEATURE_DIR = ROOT / "artifacts" / "data" / "feature_ready"
 DATASETS_DIR = ROOT / "artifacts" / "experiments" / "datasets"
+MODELS_DIR = ROOT / "artifacts" / "models"
 ARCHIVE_LOG_PATH = ROOT / "artifacts" / "control_plane" / "archive_log.jsonl"
 
 
@@ -201,6 +202,54 @@ def archive_dataset_snapshots(service, threshold_rows: int, max_local: int, dry_
             logger.info(f"Removed local dataset snapshot: {dataset_dir.name}")
 
 
+# ── Model archive ─────────────────────────────────────────────────────────────
+def archive_models(service, max_local_models: int = 20, dry_run: bool = False) -> int:
+    """
+    Scan artifacts/models/ for .pkl and .pt files sorted by mtime.
+    If total count > max_local_models, upload the oldest ones to GDrive
+    subfolder 'qdev_models', then delete local copies.
+    Returns the count of archived files.
+    """
+    if not MODELS_DIR.exists():
+        logger.info("No models directory found, skipping model archive.")
+        return 0
+
+    # Collect all model files across all pipeline subdirectories
+    all_model_files = sorted(
+        [p for p in MODELS_DIR.rglob("*") if p.is_file() and p.suffix in (".pkl", ".pt")],
+        key=lambda p: p.stat().st_mtime,
+    )
+
+    if len(all_model_files) <= max_local_models:
+        logger.info(f"Model files: {len(all_model_files)} ≤ threshold {max_local_models}, skipping.")
+        return 0
+
+    to_archive = all_model_files[: len(all_model_files) - max_local_models]
+    logger.info(f"Archiving {len(to_archive)} old model file(s) to GDrive (keeping {max_local_models}).")
+
+    gdrive_models_folder_id = _ensure_subfolder(service, "qdev_models", GDRIVE_FOLDER_ID)
+    archived_count = 0
+
+    for model_path in to_archive:
+        # Preserve pipeline_id as a subfolder on GDrive
+        pipeline_id = model_path.parent.name
+        pipeline_folder_id = _ensure_subfolder(service, pipeline_id, gdrive_models_folder_id)
+        file_id = _upload_file(service, model_path, pipeline_folder_id, dry_run)
+        if file_id:
+            if not dry_run:
+                model_path.unlink()
+                logger.info(f"Deleted local model: {model_path}")
+            _log_archive({
+                "type": "model",
+                "pipeline_id": pipeline_id,
+                "file": model_path.name,
+                "gdrive_id": file_id,
+            })
+            archived_count += 1
+
+    return archived_count
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Archive data to Google Drive")
@@ -212,16 +261,25 @@ def main():
                         help="Max local dataset snapshots to keep (default: 3)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show what would be archived without doing it")
+    parser.add_argument("--models-only", action="store_true",
+                        help="Skip data/dataset archival; only archive model files")
+    parser.add_argument("--max-models", type=int, default=20,
+                        help="Max local model files to keep before archiving (default: 20)")
     args = parser.parse_args()
 
     logger.info("Starting data archival", dry_run=args.dry_run,
-                raw_threshold=args.raw_rows, dataset_threshold=args.dataset_rows)
+                raw_threshold=args.raw_rows, dataset_threshold=args.dataset_rows,
+                models_only=args.models_only, max_models=args.max_models)
 
     service = _get_drive_service()
 
-    archive_raw_csvs(service, threshold_rows=args.raw_rows, dry_run=args.dry_run)
-    archive_dataset_snapshots(service, threshold_rows=args.dataset_rows,
-                              max_local=args.max_datasets, dry_run=args.dry_run)
+    if not args.models_only:
+        archive_raw_csvs(service, threshold_rows=args.raw_rows, dry_run=args.dry_run)
+        archive_dataset_snapshots(service, threshold_rows=args.dataset_rows,
+                                  max_local=args.max_datasets, dry_run=args.dry_run)
+
+    archived = archive_models(service, max_local_models=args.max_models, dry_run=args.dry_run)
+    logger.info(f"Model archival complete: {archived} file(s) archived.")
 
     logger.info("Archival complete.")
 

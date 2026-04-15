@@ -11,6 +11,7 @@ from src.execution.policy import ExecutionTracker
 from src.risk.manager import RiskManager
 from src.brokers.base import BrokerInterface
 from src.models.champion_registry import ChampionRegistry
+from src.models.sgd_online import OnlineSGDRegressor
 from src.monitoring.control_plane import HFTControlPlane
 from src.utils.logger import logger
 from src.controlplane.artifacts import CONTROL_PLANE_ROOT
@@ -40,6 +41,15 @@ class LiveTradingEngine:
 
         self.detector = MarketStateDetector(high_vol_threshold=0.5, toxic_vpin_threshold=0.8, trend_threshold=0.001)
         self.ranker = RealTimeCrossSectionalRanker(symbols=symbols, target_lookahead=5)
+
+        # Load persisted OnlineSGD state if available
+        _sgd_path = CONTROL_PLANE_ROOT / "models" / "sgd_online.pkl"
+        if _sgd_path.exists():
+            try:
+                self.ranker.model = OnlineSGDRegressor.load(str(_sgd_path))
+                logger.info("Loaded existing OnlineSGD state from disk.")
+            except Exception as _sgd_err:
+                logger.warning(f"Could not load SGD state: {_sgd_err}")
 
         # Load the HFT champion model from the specialized leaderboard
         try:
@@ -247,6 +257,15 @@ class LiveTradingEngine:
                 _HFT_TICKS_PATH.write_text("\n".join(existing_lines) + "\n", encoding="utf-8")
             except Exception as _e:
                 logger.debug(f"[HFT status write] skipped: {_e}")
+
+        # Save OnlineSGD state every 500 ticks
+        if self.tick_counter % 500 == 0:
+            try:
+                _sgd_save_path = CONTROL_PLANE_ROOT / "models" / "sgd_online.pkl"
+                self.ranker.model.save(str(_sgd_save_path))
+                logger.debug(f"[SGD save] persisted at tick {self.tick_counter}")
+            except Exception as _sgd_e:
+                logger.debug(f"[SGD save] skipped: {_sgd_e}")
 
         # Simulate Matching Process if running offline/simulation broker
         if self.is_simulation:

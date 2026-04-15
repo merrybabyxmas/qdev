@@ -2,6 +2,8 @@ import numpy as np
 from sklearn.linear_model import SGDRegressor
 from sklearn.preprocessing import StandardScaler
 from src.utils.logger import logger
+import joblib
+from pathlib import Path
 
 class OnlineSGDRegressor:
     """
@@ -36,3 +38,33 @@ class OnlineSGDRegressor:
             return np.zeros(len(X))
         X_scaled = self.scaler.transform(X)
         return self.model.predict(X_scaled)
+
+    def save(self, path) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "coef": self.model.coef_.tolist() if hasattr(self.model, "coef_") else [],
+            "intercept": self.model.intercept_.tolist() if hasattr(self.model, "intercept_") else [0.0],
+            "scaler": self.scaler,
+            "is_fitted": self.is_fitted,
+            "learning_rate": self.model.learning_rate,
+            "eta0": self.model.eta0,
+        }
+        joblib.dump(payload, Path(path))
+        logger.debug(f"OnlineSGDRegressor saved to {path}")
+
+    @classmethod
+    def load(cls, path) -> "OnlineSGDRegressor":
+        payload = joblib.load(Path(path))
+        obj = cls(
+            learning_rate=payload.get("learning_rate", "adaptive"),
+            eta0=payload.get("eta0", 0.01),
+        )
+        if payload.get("is_fitted") and payload.get("coef"):
+            obj.model.coef_ = np.array(payload["coef"])
+            obj.model.intercept_ = np.array(payload["intercept"])
+            # SGDRegressor requires t_ to be set for partial_fit continuation
+            obj.model.t_ = 1.0
+            obj.is_fitted = True
+        obj.scaler = payload.get("scaler", obj.scaler)
+        logger.debug(f"OnlineSGDRegressor loaded from {path}")
+        return obj

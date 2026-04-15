@@ -260,6 +260,36 @@ class DeepLearningModel:
         self.is_fitted = True
         logger.info(f"{self.model_type} Model fitted.")
 
+    def save(self, path) -> None:
+        from pathlib import Path
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "model_type": self.model_type,
+                "features": self.features,
+                "target": self.target,
+                "seq_len": self.seq_len,
+                "state_dict": self.model.state_dict(),
+                "is_fitted": self.is_fitted,
+            },
+            path,
+        )
+        logger.debug(f"DeepLearningModel ({self.model_type}) saved to {path}")
+
+    @classmethod
+    def load(cls, path) -> "DeepLearningModel":
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        obj = cls(
+            model_type=ckpt["model_type"],
+            features=ckpt["features"],
+            target=ckpt["target"],
+            seq_len=ckpt["seq_len"],
+        )
+        obj.model.load_state_dict(ckpt["state_dict"])
+        obj.is_fitted = ckpt["is_fitted"]
+        logger.debug(f"DeepLearningModel ({ckpt['model_type']}) loaded from {path}")
+        return obj
+
     def predict(self, df: pd.DataFrame, batch_size: int = 32) -> np.ndarray:
         if not self.is_fitted or df.empty:
             return np.zeros(len(df))
