@@ -14,15 +14,11 @@ from src.features.microstructure.imbalance import (compute_order_book_imbalance,
                                                   compute_spread,
                                                   compute_trade_intensity,
                                                   compute_toxicity_vpin_proxy,
-                                                  compute_volatility_burst)
+                                                  compute_volatility_burst,
+                                                  compute_jump_proxy)
 from src.utils.logger import logger
 
 class MultiSymbolHFTStreamManager:
-    """
-    다중 종목(Multi-symbol) 이벤트 기반(Websocket) 실시간 HFT 스트림 수신 및 피처 갱신.
-    각 종목별로 개별 버퍼(Ring Buffer)를 유지하고, 체결/호가 시마다 개별 피처를 발생시킴.
-    또한 오프라인 리플레이(Replay) 기능을 지원함.
-    """
     def __init__(self, api_key: str = "mock", secret_key: str = "mock", symbols: List[str] = ["BTC/USD", "ETH/USD"], enable_live_stream: bool = True):
         self.symbols = symbols
         self.stream = None
@@ -30,14 +26,11 @@ class MultiSymbolHFTStreamManager:
         if enable_live_stream:
             if CryptoDataStream is None:
                 raise ImportError("alpaca-py is not installed; live HFT stream mode is unavailable.")
-            # Alpaca crypto WS doesn't strictly need valid keys for basic feeds
             self.stream = CryptoDataStream(api_key, secret_key)
 
-        # State stores per symbol
         self.trade_buffers = {sym: TickRingBuffer(capacity=10000) for sym in symbols}
         self.quote_buffers = {sym: QuoteRingBuffer(capacity=1000) for sym in symbols}
 
-        # Callbacks and State Tracking
         self.on_feature_update: Callable[[str, dict], None] = None
         self.last_feature_event = {sym: None for sym in symbols}
         self.last_event_received_at: float = None
@@ -53,7 +46,6 @@ class MultiSymbolHFTStreamManager:
             self.last_quote_at = now
 
     def process_trade_snapshot(self, symbol: str, timestamp_ms: float, price: float, size: float, taker_side: str):
-        """Process an offline trade event for replay or tests."""
         self._mark_event_received("trade")
         side = 1 if str(taker_side).upper().startswith("B") else -1
         if symbol in self.trade_buffers:
@@ -61,14 +53,12 @@ class MultiSymbolHFTStreamManager:
             self._trigger_features(symbol)
 
     def process_quote_snapshot(self, symbol: str, timestamp_ms: float, bid_price: float, bid_size: float, ask_price: float, ask_size: float):
-        """Process an offline quote event for replay or tests."""
         self._mark_event_received("quote")
         if symbol in self.quote_buffers:
             self.quote_buffers[symbol].append(timestamp_ms, bid_price, bid_size, ask_price, ask_size)
             self._trigger_features(symbol)
 
     def replay_events(self, events: list[dict[str, Any]]):
-        """Replay a finite event stream without requiring a live websocket connection."""
         for event in events:
             event_type = event.get("type")
             symbol = event.get("symbol")
@@ -96,7 +86,6 @@ class MultiSymbolHFTStreamManager:
                 raise ValueError(f"Unsupported replay event type: {event_type}")
 
     async def _trade_handler(self, data: Any):
-        """체결(Trade) 실시간 이벤트 처리기"""
         self._mark_event_received("trade")
         t = data.timestamp.timestamp() * 1000 # ms
         p = float(data.price)
@@ -115,7 +104,6 @@ class MultiSymbolHFTStreamManager:
             self._trigger_features(sym)
 
     async def _quote_handler(self, data: Any):
-        """호가(Quote / Top of Book) 실시간 이벤트 처리기"""
         self._mark_event_received("quote")
         t = data.timestamp.timestamp() * 1000
         bp = float(data.bid_price)
@@ -130,7 +118,6 @@ class MultiSymbolHFTStreamManager:
             self._trigger_features(sym)
 
     def _trigger_features(self, symbol: str):
-        """틱, 호가 업데이트 후 즉각적인 마이크로스트럭처 계산"""
         quote = self.quote_buffers[symbol].get_latest()
         if quote[1] == 0.0:  # No quote yet
             return
@@ -145,6 +132,7 @@ class MultiSymbolHFTStreamManager:
         intensity = compute_trade_intensity(recent_trades, window_ms=1000.0)
         toxicity = compute_toxicity_vpin_proxy(recent_trades, window_ms=1000.0)
         vol_burst = compute_volatility_burst(recent_trades, window_ms=1000.0)
+        jump_proxy = compute_jump_proxy(recent_trades, window_ms=1000.0, jump_threshold=3.0)
 
         feature_event = {
             "timestamp": timestamp,
@@ -158,6 +146,7 @@ class MultiSymbolHFTStreamManager:
             "intensity": intensity,
             "toxicity_vpin": toxicity,
             "volatility_burst": vol_burst,
+            "jump_proxy": jump_proxy,
             "mid_price": (bp + ap) / 2.0
         }
 
@@ -166,13 +155,10 @@ class MultiSymbolHFTStreamManager:
             self.on_feature_update(symbol, feature_event)
 
     def run(self):
-        """스트림 구독 시작 (블로킹 루프)"""
         if self.stream is None:
             raise RuntimeError("Live stream is disabled. Instantiate with enable_live_stream=True to run() against Alpaca.")
 
         logger.info(f"Starting Multi-Symbol Websocket stream for {self.symbols}...")
         self.stream.subscribe_trades(self._trade_handler, *self.symbols)
         self.stream.subscribe_quotes(self._quote_handler, *self.symbols)
-
-        # This will block forever
         self.stream.run()
