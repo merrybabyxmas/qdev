@@ -3,6 +3,8 @@ import json
 import time
 from datetime import datetime, timezone
 import numpy as np
+import torch
+from collections import deque
 from src.ingestion.websocket_client import MultiSymbolHFTStreamManager
 from src.models.state_detector import MarketStateDetector
 from src.models.ranker_engine import RealTimeCrossSectionalRanker
@@ -13,6 +15,11 @@ from src.brokers.base import BrokerInterface
 from src.models.champion_registry import ChampionRegistry
 from src.models.sgd_online import OnlineSGDRegressor
 from src.monitoring.control_plane import HFTControlPlane
+from src.hft.models.sde.avellaneda_stoikov import AvellanedaStoikovMarketMaker
+from src.hft.execution.fill_prob import FillProbabilityGate
+from src.models.logistic_online import OnlineLogisticDirectionClassifier
+from src.hft.models.dl.event_lstm import EventSequenceLSTM
+from src.hft.models.dl.deeplob import CompactDeepLOB
 from src.utils.logger import logger
 from src.controlplane.artifacts import CONTROL_PLANE_ROOT
 
@@ -22,9 +29,10 @@ _HFT_TICKS_MAX_LINES = 5000
 
 class LiveTradingEngine:
     """
-    모든 HFT 컴포넌트(스트림 수신 -> 마이크로스트럭처 계산 -> 온라인 학습 -> 랭킹 -> 상태 기반 파이프라인 라우팅 -> 취소/재주문 실행)를
-    무한 루프(Event-driven Loop) 안에서 엮는 실제 트레이딩 엔진.
-    HFT Execution Plane: Control Plane(스케줄러)이 발행한 hft_policy.json을 주기적으로 읽어 실행 여부를 상위에서 통제받습니다.
+    HFT Execution Plane:
+    모든 HFT 파이프라인 (HFT_BASE, HFT_SDE, HFT_DL, HFT_RISK, HFT_HYB)을 종합하여
+    초고빈도 틱 데이터를 바탕으로 의사결정 및 주문 실행.
+    Control Plane(스케줄러)이 발행한 hft_policy.json을 주기적으로 읽어 실행 여부를 상위에서 통제받습니다.
     """
     def __init__(self, symbols, broker_engine, is_simulation=False, api_key: str = "mock", secret_key: str = "mock", enable_live_stream: bool = False):
         self.symbols = symbols
@@ -81,8 +89,25 @@ class LiveTradingEngine:
         self.policy_sync_interval = 10.0  # 스케줄러 정책을 10초마다 확인
 
         self.router = PipelineRouter()
-        self.tracker = ExecutionTracker(broker_or_engine=self.broker, cancel_threshold_bps=1.0)
+
+        # HFT Execution / Policies
+        self.tracker = ExecutionTracker(broker_or_engine=self.broker, cancel_threshold_bps=1.0, max_order_age_ms=5000.0)
         self.risk_manager = RiskManager(max_position_cap=0.40)
+        self.fill_prob_gate = FillProbabilityGate(min_fill_prob=0.3)
+        self.as_market_maker = AvellanedaStoikovMarketMaker(risk_aversion=0.1, time_horizon=1.0)
+
+        # Additional HFT Models (HFT_BASE_002, HFT_DL_001, HFT_DL_002)
+        self.logistic_classifier = OnlineLogisticDirectionClassifier()
+
+        # Sequence tracking for DL models (require sequence of ticks, e.g. length=10)
+        self.dl_sequence_length = 10
+        self.event_lstm = EventSequenceLSTM(input_features=5, sequence_length=self.dl_sequence_length, output_dim=1)
+        self.event_lstm.eval()
+
+        self.deeplob = CompactDeepLOB(input_features=5, sequence_length=self.dl_sequence_length, num_classes=3)
+        self.deeplob.eval()
+
+        self.event_history = {sym: deque(maxlen=self.dl_sequence_length) for sym in symbols}
 
         self.is_simulation = is_simulation
         self.tick_counter = 0
@@ -137,10 +162,8 @@ class LiveTradingEngine:
         # 1. State Detection
         current_state = self.detector.detect_state(feature_event)
 
-        # 2. Continuous Cross-sectional Ranking & Online Update
+        # 2. HFT_BASE_001: Online SGD + LGBM Ranker
         sgd_preds, lgbm_preds, raw_targets = self.ranker.update_and_predict(symbol, feature_event)
-
-        # 3. Apply Portfolio Caps
         target_weights = self.risk_manager.apply_position_caps(raw_targets)
 
         target_weight_for_sym = target_weights.get(symbol, 0.0)
@@ -148,21 +171,62 @@ class LiveTradingEngine:
         lgbm_pred_for_sym = lgbm_preds.get(symbol, 0.0)
 
         if self.tick_counter % 50 == 0:
-            logger.info(f"[{symbol}] State: {current_state.name} | Target W: {target_weight_for_sym:.2%} | Raw Pred: {pred_for_sym:+.2f} bps")
+            logger.info(f"[{symbol}] State: {current_state.name} | Target W: {target_weight_for_sym:.2%} | SGD: {pred_for_sym:+.2f} bps | LGBM: {lgbm_pred_for_sym:+.2f} bps")
 
-        # 4. Context-Aware Pipeline Execution Routing (with macro policy)
+        # Feature vector for alternative models
+        feat_vec = np.array([
+            feature_event.get("obi", 0.0),
+            feature_event.get("microprice_drift", 0.0),
+            feature_event.get("spread", 0.0),
+            feature_event.get("toxicity_vpin", 0.0),
+            feature_event.get("volatility_burst", 0.0),
+        ])
+
+        # 3. HFT_BASE_002: Online Logistic Direction Classifier
+        # Use SGD prediction sign as training label
+        target_label = np.array([1 if pred_for_sym > 0.5 else (-1 if pred_for_sym < -0.5 else 0)])
+        self.logistic_classifier.update(feat_vec.reshape(1, -1), target_label)
+        logistic_pred_probs = self.logistic_classifier.predict_proba(feat_vec.reshape(1, -1))
+
+        # Ensemble: SGD base + logistic modifier + LGBM blend
+        ensemble_pred = pred_for_sym
+        if logistic_pred_probs[0, 2] > 0.6:   # High prob of UP
+            ensemble_pred += 1.0
+        elif logistic_pred_probs[0, 0] > 0.6:  # High prob of DOWN
+            ensemble_pred -= 1.0
+        if lgbm_pred_for_sym != 0.0:
+            ensemble_pred = ensemble_pred * 0.7 + lgbm_pred_for_sym * 0.3
+
+        # 4. HFT_DL_001 / HFT_DL_002: Sequence-based DL models
+        self.event_history[symbol].append(feat_vec)
+        if len(self.event_history[symbol]) == self.dl_sequence_length:
+            seq_tensor = torch.tensor(np.array(self.event_history[symbol]), dtype=torch.float32).unsqueeze(0)
+            with torch.no_grad():
+                # HFT_DL_002: Event Sequence LSTM
+                lstm_out = self.event_lstm(seq_tensor).item()
+                ensemble_pred += lstm_out * 0.1
+
+                # HFT_DL_001: Compact DeepLOB
+                lob_out = self.deeplob(seq_tensor)
+                lob_class = torch.argmax(lob_out, dim=1).item()
+                if lob_class == 2:    # Up
+                    ensemble_pred += 0.5
+                elif lob_class == 0:  # Down
+                    ensemble_pred -= 0.5
+
+        # 5. Context-Aware Pipeline Execution Routing
         action: ExecutionAction = self.router.route_execution(
             state=current_state,
-            prediction=pred_for_sym,
+            prediction=ensemble_pred,
             policy=self.current_policy,
-            symbol=symbol
+            symbol=symbol,
+            features=feature_event,
         )
 
         if action.action == "HALT":
-            # Override target weight to 0 to safely exit any open positions when halted
             target_weight_for_sym = 0.0
 
-        # 5. Execution Policy (Cancel/Replace tracking)
+        # HFT_EXEC_002: Cancel/Replace Tracker
         self.tracker.evaluate_cancel_replace(t, symbol, b, a)
 
         mid_price = feature_event["mid_price"]
@@ -176,7 +240,7 @@ class LiveTradingEngine:
         delta_qty = self.risk_manager.calculate_order_qty(
             symbol, target_weight_for_sym, current_qty, mid_price, equity,
             available_cash=available_cash,
-            max_order_usd=min(500.0, available_cash * 0.90),  # 최대 $500 또는 가용잔고 90%
+            max_order_usd=min(500.0, available_cash * 0.90),
         )
 
         # 6. Execute newly proposed actions
@@ -184,35 +248,47 @@ class LiveTradingEngine:
 
         if action.action == "HALT" or delta_qty == 0.0:
             for oid in list(active_orders_for_sym.keys()):
-                if self.is_simulation:
+                try:
                     self.broker.cancel_order(oid, t)
-                else:
+                except TypeError:
                     self.broker.cancel_order(oid)
                 self.tracker.untrack_order(oid)
 
         elif action.action == "PASSIVE_MAKE" and not active_orders_for_sym and delta_qty != 0.0:
             side = "buy" if delta_qty > 0 else "sell"
-            qty = abs(delta_qty)
-            price = b if side == "buy" else a
+            qty = abs(delta_qty) * action.size_multiplier
 
-            if self.is_simulation:
-                oid = self.broker.place_limit_order(symbol, side, price, qty, t)
-            else:
-                oid = self.broker.place_limit_order(symbol, side, price, qty)
-            if oid:
-                self.tracker.track_order(oid, symbol, side, price, qty)
+            # HFT_SDE_001: Avellaneda-Stoikov inventory-aware pricing
+            opt_bid, opt_ask = self.as_market_maker.calculate_quotes(
+                mid_price=mid_price,
+                inventory=current_qty,
+                volatility=feature_event.get("volatility_burst", 0.01),
+                current_time=0.0,
+            )
+            price = opt_bid if side == "buy" else opt_ask
+            price = min(price, b) if side == "buy" else max(price, a)
+
+            # HFT_EXEC_001: Fill Probability Pre-Check
+            fill_feat = np.array([feature_event["spread"], 0.1, feature_event["bid_size"], 0.0])
+            if self.fill_prob_gate.is_executable(fill_feat):
+                try:
+                    oid = self.broker.place_limit_order(symbol, side, price, qty, t)
+                except TypeError:
+                    oid = self.broker.place_limit_order(symbol, side, price, qty)
+                if oid:
+                    self.tracker.track_order(oid, symbol, side, price, qty, t)
 
         elif action.action == "AGGRESSIVE_TAKE" and not active_orders_for_sym and delta_qty != 0.0:
             side = "buy" if delta_qty > 0 else "sell"
-            qty = abs(delta_qty)
+            qty = abs(delta_qty) * action.size_multiplier
             price = a if side == "buy" else b
 
-            if self.is_simulation:
+            try:
                 oid = self.broker.place_limit_order(symbol, side, price, qty, t)
-            else:
+            except TypeError:
                 oid = self.broker.place_limit_order(symbol, side, price, qty)
             if oid:
-                self.tracker.track_order(oid, symbol, side, price, qty)
+                self.tracker.track_order(oid, symbol, side, price, qty, t)
 
         # Status file write every 10 ticks per symbol
         self._sym_tick_counter[symbol] = self._sym_tick_counter.get(symbol, 0) + 1
@@ -221,7 +297,6 @@ class LiveTradingEngine:
                 CONTROL_PLANE_ROOT.mkdir(parents=True, exist_ok=True)
                 (CONTROL_PLANE_ROOT / "logs").mkdir(parents=True, exist_ok=True)
 
-                # Build per-symbol entry
                 fe = feature_event
                 sym_entry = {
                     "price": float((b + a) / 2.0),
@@ -236,11 +311,11 @@ class LiveTradingEngine:
                     "market_state": current_state.name,
                     "prediction_bps": float(pred_for_sym),
                     "lgbm_prediction_bps": float(lgbm_pred_for_sym),
+                    "ensemble_prediction_bps": float(ensemble_pred),
                     "target_weight": float(target_weight_for_sym),
                     "tick_count": int(self.ranker.tick_counts.get(symbol, 0)),
                 }
 
-                # Load existing status to merge symbol entries
                 existing_symbols: dict = {}
                 if _HFT_STATUS_PATH.exists():
                     try:
@@ -271,7 +346,6 @@ class LiveTradingEngine:
                 }
                 _HFT_STATUS_PATH.write_text(json.dumps(status_payload, indent=2), encoding="utf-8")
 
-                # Append tick record to JSONL, keep last 5000 lines
                 tick_record = {"timestamp": status_payload["updated_at"], "symbol": symbol, **sym_entry}
                 existing_lines: list = []
                 if _HFT_TICKS_PATH.exists():
@@ -303,7 +377,6 @@ class LiveTradingEngine:
         if self.is_simulation:
             self.broker.process_quote_update(t, b, a)
 
-            # Clean up filled orders from tracker
             for oid in list(self.tracker.active_orders.keys()):
                 if oid not in getattr(self.broker, "active_orders", {}):
                     self.tracker.untrack_order(oid)
@@ -320,7 +393,6 @@ class LiveTradingEngine:
         logger.info("Simulation tick loop started.")
         while True:
             for sym in self.symbols:
-                # Random walk step
                 shock = np.random.normal(0, mid[sym] * 0.0002)
                 mid[sym] = max(mid[sym] + shock, 1.0)
                 half_spread = mid[sym] * 0.0001

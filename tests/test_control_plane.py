@@ -61,19 +61,21 @@ class TestControlPlaneAndRouting(unittest.TestCase):
                 "BTC": {"enabled": True},
                 "ETH": {"enabled": False}
             },
-            "thresholds": {"prediction_bps_min": 1.0}
+            "thresholds": {"prediction_bps_min": 1.0, "microprice_drift_trigger": 0.05}
         }
 
+        features = {"jump_proxy": 0.0, "microprice_drift": 0.0, "spread": 0.01, "toxicity_vpin": 0.1, "mid_price": 100.0}
+
         # 1. BTC with allow_hft=True, enabled=True, and Trending State -> AGGRESSIVE_TAKE
-        action1 = router.route_execution(MarketState.STABLE_TREND, prediction=1.5, policy=policy, symbol="BTC")
+        action1 = router.route_execution(MarketState.STABLE_TREND, prediction=1.5, policy=policy, symbol="BTC", features=features)
         self.assertEqual(action1.action, "AGGRESSIVE_TAKE")
 
         # 2. ETH with enabled=False -> HALT
-        action2 = router.route_execution(MarketState.STABLE_TREND, prediction=1.5, policy=policy, symbol="ETH")
+        action2 = router.route_execution(MarketState.STABLE_TREND, prediction=1.5, policy=policy, symbol="ETH", features=features)
         self.assertEqual(action2.action, "HALT")
 
         # 3. BTC but Microstructure is TOXIC -> HALT
-        action3 = router.route_execution(MarketState.HIGH_VOL_TOXIC, prediction=10.0, policy=policy, symbol="BTC")
+        action3 = router.route_execution(MarketState.HIGH_VOL_TOXIC, prediction=10.0, policy=policy, symbol="BTC", features=features)
         self.assertEqual(action3.action, "HALT")
 
 if __name__ == '__main__':
